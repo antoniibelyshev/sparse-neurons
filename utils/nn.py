@@ -50,7 +50,10 @@ class BayesianLinear(nn.Module):
 
     def reset_parameters(self):
         nn.init.kaiming_uniform_(self.weight)
-        nn.init.constant_(self.weight_log_var, -5)
+
+        with torch.no_grad():
+            self.weight_log_var.copy_(safe_log(self.weight ** 2) - 5)
+        
         if self.bias is not None:
             bound = 1 / math.sqrt(self.conv_size)
             nn.init.uniform_(self.bias, -bound, bound)
@@ -64,7 +67,7 @@ class BayesianLinear(nn.Module):
 
     def kl(self) -> Tensor:
         kl = safe_log((self.weight.pow(
-            2) + self.weight_var).mean(self.conv_dims)).sum() * self.conv_size
+            2) + self.weight_var).mean(list(range(1, self.weight.dim())))).sum() * self.conv_size
         kl -= self.weight_log_var.sum()
         return kl / 2
 
@@ -95,12 +98,8 @@ class BayesianLinear(nn.Module):
         return self.weight.shape[0]
 
     @property
-    def conv_dims(self) -> tuple[int, ...]:
-        return self.weight.shape[1:]
-
-    @property
     def conv_size(self) -> int:
-        return math.prod(self.conv_dims)
+        return math.prod(self.weight.shape[1:])
 
     @property
     def equivalent_dropout_rate(self) -> Tensor:
@@ -112,7 +111,7 @@ class BayesianLinear(nn.Module):
 
     @property
     def eval_weight(self) -> Tensor:
-        return torch.where(self.mask(), self.weight, torch.zeros(1, device=self.device))
+        return torch.where(self.get_mask(), self.weight, torch.zeros(1, device=self.device))
 
 
 class BayesianVGG(nn.Module):
@@ -140,7 +139,6 @@ class BayesianVGG(nn.Module):
                     (in_channels, conv_kernel_size, conv_kernel_size),
                     cfg,
                     linear_transform_type='conv2d',
-                    kernel_size=conv_kernel_size,
                     stride=conv_stride,
                     padding=conv_padding
                 )
@@ -152,7 +150,7 @@ class BayesianVGG(nn.Module):
                 self.features_layers.append(nn.MaxPool2d(
                     kernel_size=max_pool_kernel_size,
                     stride=max_pool_stride,
-                    padding=max_pool_padding
+                    padding=max_pool_padding,
                 ))
             else:
                 raise ValueError(f'Unsupported layer type: {cfg}')
