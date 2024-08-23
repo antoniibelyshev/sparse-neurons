@@ -3,7 +3,7 @@ from torch import nn, Tensor
 from torch.utils.data import DataLoader
 from torch.optim.optimizer import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
-from typing import Callable, Iterable
+from typing import Callable
 from .nn import BayesianLinear
 
 import wandb
@@ -28,7 +28,6 @@ class Trainer:
             epochs: int = 100,
             device: torch.device = DEVICE,
             reg_coef_lambda: Callable[[int], float] = lambda epoch: 1.0,
-            decay: float = 0.999,
         ) -> None:
 
         self.model = model.to(device)
@@ -46,7 +45,7 @@ class Trainer:
     def loss(self, output: Tensor, target: Tensor) -> Tensor:
         return self.criterion(output, target)
 
-    def log_metrics(self, **metrics: float) -> None:
+    def log(self, **metrics: float) -> None:
         wandb.log(metrics) # type: ignore
 
     def train(self, project: str = "neuron sparsity", entity: str = "antonii-belyshev") -> None:
@@ -65,15 +64,15 @@ class Trainer:
                 total_loss.backward()
                 self.optimizer.step()
 
-                self.log_metrics(loss=loss.item(), reg=reg.item())
+                self.log(loss=loss.item(), reg=reg.item())
 
-            self.test(epoch)
+            self.log(**self.test(epoch))
 
             self.scheduler.step()
 
-        run.finish()
+        run.finish() # type: ignore
 
-    def test(self, epoch: int) -> None:
+    def test(self, epoch: int) -> dict[str, float]:
         metrics: dict[str, float] = {}
 
         self.model.eval()
@@ -92,10 +91,22 @@ class Trainer:
             metrics["eval_loss"] = loss / len(self.test_loader)
             metrics["accuracy"] = 100. * correct / self.n_test
 
+        metrics["epoch"] = epoch
+
+        return metrics
+    
+
+class BayesianModelTrainer(Trainer):
+    def test(self, epoch: int) -> dict[str, float]:
+        metrics = super().test(epoch)
+
+        self.model.eval()
+
+        with torch.no_grad():
             total_neurons = torch.zeros(1, device=self.device)
             sparsed_neurons = torch.zeros(1, device=self.device)
             
-            bayesian_conv_layers = [layer for layer in self.model.features_layers if isinstance(layer, BayesianLinear)]
+            bayesian_conv_layers = [layer for layer in self.model.get_bayesian_layers() if isinstance(layer, BayesianLinear)]
             for i, layer in enumerate(bayesian_conv_layers):
                 mask = layer.equivalent_dropout_rate < threshold
                 sparsity = 1 - mask.float().mean()
@@ -108,8 +119,6 @@ class Trainer:
                 metrics[f"neuron_sparsity_{i}"] = neuron_sparsity.item()
 
             total_neuron_sparsity = 100. * sparsed_neurons.item() / total_neurons.item()
-
             metrics["total_neuron_sparsity"] = total_neuron_sparsity
-            metrics["epoch"] = epoch
 
-        self.log_metrics(**metrics)
+        return metrics
