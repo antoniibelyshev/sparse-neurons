@@ -4,7 +4,7 @@ from torch.utils.data import DataLoader
 from torch.optim.optimizer import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 from typing import Callable
-from .nn import BayesianLinear
+from .bayesian_nn import BayesianLinear
 
 import wandb
 
@@ -18,9 +18,7 @@ class Trainer:
             self,
             model: nn.Module,
             train_loader: DataLoader[tuple[Tensor, Tensor]],
-            n_train: int,
             test_loader: DataLoader[tuple[Tensor, Tensor]],
-            n_test: int,
             optimizer: Optimizer,
             scheduler: LRScheduler,
             *,
@@ -28,14 +26,13 @@ class Trainer:
             epochs: int = 100,
             device: torch.device = DEVICE,
             reg_coef_lambda: Callable[[int], float] = lambda epoch: 1.0,
-        ) -> None:
-
+    ) -> None:
         self.model = model.to(device)
         self.device = device
         self.train_loader = train_loader
-        self.n_train = n_train
+        self.n_train = len(train_loader.dataset) # type: ignore
         self.test_loader = test_loader
-        self.n_test = n_test
+        self.n_test = len(test_loader.dataset) # type: ignore
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.criterion = criterion
@@ -59,13 +56,17 @@ class Trainer:
                 self.optimizer.zero_grad()
                 output = self.model(data)
                 loss = self.loss(output, target)
-                reg = self.model.kl() / self.n_train
-                total_loss = loss + self.reg_coef_lambda(epoch) * reg
-                total_loss.backward()
+                if hasattr(self.model, "kl"):
+                    reg = self.model.kl() / self.n_train
+                    total_loss = loss + self.reg_coef_lambda(epoch) * reg
+                    total_loss.backward()
+                    self.log(loss=loss.item(), reg=reg.item())
+                else:
+                    loss.backward() # type: ignore
+                    self.log(loss=loss.item())
                 self.optimizer.step()
-
-                self.log(loss=loss.item(), reg=reg.item())
-
+    
+            
             self.log(**self.test(epoch))
 
             self.scheduler.step()
