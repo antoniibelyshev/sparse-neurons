@@ -8,6 +8,8 @@ from .bayesian_nn import BayesianLinear
 
 import wandb
 
+import matplotlib.pyplot as plt
+
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 threshold = 0.99
@@ -45,8 +47,8 @@ class Trainer:
     def log(self, **metrics: float) -> None:
         wandb.log(metrics) # type: ignore
 
-    def train(self, project: str = "neuron sparsity", entity: str = "antonii-belyshev") -> None:
-        run = wandb.init(project=project, entity=entity) # type: ignore
+    def train(self, name="default experiment", project: str = "neuron sparsity", entity: str = "antonii-belyshev") -> None:
+        run = wandb.init(name=name, project=project, entity=entity) # type: ignore
 
         for epoch in range(self.epochs):
             self.model.train()
@@ -95,7 +97,7 @@ class Trainer:
         metrics["epoch"] = epoch
 
         return metrics
-    
+
 
 class BayesianModelTrainer(Trainer):
     def test(self, epoch: int) -> dict[str, float]:
@@ -106,8 +108,9 @@ class BayesianModelTrainer(Trainer):
         with torch.no_grad():
             total_neurons = torch.zeros(1, device=self.device)
             sparsed_neurons = torch.zeros(1, device=self.device)
-            
+
             bayesian_conv_layers = [layer for layer in self.model.get_bayesian_layers() if isinstance(layer, BayesianLinear)]
+
             for i, layer in enumerate(bayesian_conv_layers):
                 mask = layer.equivalent_dropout_rate < threshold
                 sparsity = 1 - mask.float().mean()
@@ -118,6 +121,25 @@ class BayesianModelTrainer(Trainer):
 
                 metrics[f"sparsity_{i}"] = sparsity.item()
                 metrics[f"neuron_sparsity_{i}"] = neuron_sparsity.item()
+
+                if epoch % 10 == 0:
+                    min_dropout_rate = layer.equivalent_dropout_rate.amin(list(range(1, mask.dim())))
+
+                    plt.figure(figsize=(10, 6))
+                    sorted_values = sorted(1 - min_dropout_rate.detach().cpu(), reverse=True)
+                    plt.bar(range(len(sorted_values)), sorted_values)
+                    plt.xlabel('Neuron Index')
+                    plt.ylabel('1 - max(equivalent_dropout_rate)')
+                    plt.title('Sorted 1 - max(equivalent_dropout_rate) per Layer')
+                    plt.yscale('log')
+
+                    plt.tight_layout()
+                    plt_path = "sparsity_plot.png"
+                    plt.savefig(plt_path)
+
+                    wandb.log({f"sparsity_plot layer {i}": wandb.Image(plt_path)})
+
+                    plt.close()
 
             total_neuron_sparsity = 100. * sparsed_neurons.item() / total_neurons.item()
             metrics["total_neuron_sparsity"] = total_neuron_sparsity

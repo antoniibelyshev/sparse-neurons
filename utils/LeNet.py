@@ -7,7 +7,7 @@ from .bayesian_nn import BayesianLinear
 class LeNet(nn.Module):
     def __init__(
             self,
-            in_features: int = 728,
+            in_features: int = 784,
             num_classes: int = 10,
             intermediate_dims: list[int] = [500, 300],
             bias: bool = True,
@@ -32,7 +32,7 @@ class LeNet(nn.Module):
 class BayesianLeNet(nn.Module):
     def __init__(
             self,
-            in_features: int = 728,
+            in_features: int = 784,
             num_classes: int = 10,
             intermediate_dims: list[int] = [500, 300],
             bias: bool = True,
@@ -47,7 +47,7 @@ class BayesianLeNet(nn.Module):
             self.layers.append(nn.ReLU())
             in_features = out_features
 
-        self.layers.append(nn.Linear(in_features, num_classes, bias))
+        self.layers.append(BayesianLinear(in_features, num_classes, bias, threshold, linear_transform_type='linear'))
 
     def forward(self, x: Tensor) -> Tensor:
         for layer in self.layers:

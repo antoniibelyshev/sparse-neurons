@@ -3,6 +3,7 @@ from torch import nn, Tensor
 from .bayesian_nn import BayesianLinear
 
 from .utils import safe_log
+import math
 
 
 class VGG(nn.Module):
@@ -18,6 +19,7 @@ class VGG(nn.Module):
             max_pool_kernel_size: int = 2,
             max_pool_stride: int = 2,
             max_pool_padding: int = 0,
+            bias: bool = True,
     ) -> None:
         
         super(VGG, self).__init__() # type: ignore
@@ -29,15 +31,24 @@ class VGG(nn.Module):
                 self.features_layers.append(nn.Conv2d(
                     in_channels,
                     cfg,
+                    bias=bias,
                     kernel_size=conv_kernel_size,
                     padding=conv_padding,
                     stride=conv_stride,
                 ))
+
+                std = math.sqrt(2 / conv_kernel_size ** 2 / cfg)
+                nn.init.normal_(self.features_layers[-1].weight, 0, std)
+                if bias:
+                    nn.init.zeros_(self.features_layers[-1].bias)
+
                 in_channels = cfg
                 self.features_layers.append(nn.ReLU())
-                self.features_layers.append(nn.BatchNorm2d(cfg))
-                self.features_layers.append(nn.Dropout2d())
+                self.features_layers.append(nn.BatchNorm2d(cfg, eps=1e-3))
+                # self.features_layers.append(nn.Dropout2d(0.4 if i else 0.3))
+                self.features_layers.append(nn.Dropout2d(0.5))
             elif cfg == 'M':
+                self.features_layers.pop(-1)
                 self.features_layers.append(nn.MaxPool2d(
                     kernel_size=max_pool_kernel_size,
                     stride=max_pool_stride,
@@ -46,24 +57,24 @@ class VGG(nn.Module):
             else:
                 raise ValueError(f'Unsupported layer type: {cfg}')
             
-        self.avgpool = nn.AdaptiveAvgPool2d((7, 7))
+        # self.avgpool = nn.AdaptiveAvgPool2d((7, 7))
 
         self.classifier = nn.Sequential(
-            nn.Linear(512 * 7 * 7, 512),
-            nn.BatchNorm1d(512),
-            nn.ReLU(True),
-            nn.Dropout(),
+            # nn.Linear(512 * 7 * 7, 512),
+            # nn.BatchNorm1d(512),
+            # nn.ReLU(True),
+            nn.Dropout(0.7),
             nn.Linear(512, 512),
             nn.BatchNorm1d(512),
             nn.ReLU(True),
-            nn.Dropout(),
+            nn.Dropout(0.7),
             nn.Linear(512, num_classes),
         )
 
     def forward(self, x: Tensor) -> Tensor:
         for layer in self.features_layers:
             x = layer(x)
-        x = self.avgpool(x)
+        # x = self.avgpool(x)
         x = torch.flatten(x, 1)
         x = self.classifier(x)
         return x
@@ -110,7 +121,7 @@ class BayesianVGG(nn.Module):
             else:
                 raise ValueError(f'Unsupported layer type: {cfg}')
             
-        self.avgpool = nn.AdaptiveAvgPool2d((7, 7))
+        # self.avgpool = nn.AdaptiveAvgPool2d((7, 7))
 
         self.classifier = nn.Sequential(
             BayesianLinear(512, 512, linear_transform_type='linear'),
@@ -121,7 +132,7 @@ class BayesianVGG(nn.Module):
     def forward(self, x: Tensor) -> Tensor:
         for layer in self.features_layers:
             x = layer(x)
-        x = self.avgpool(x)
+        # x = self.avgpool(x)
         x = torch.flatten(x, 1)
         x = self.classifier(x)
         return x
@@ -165,7 +176,7 @@ class BayesianVGG(nn.Module):
         return nn.Sequential(*squeezed_classifier)
 
     def squeeze(self, threshold: float | None = None) -> nn.Module:
-        return nn.Sequential(self.squeeze_features(threshold), self.avgpool, nn.Flatten(), self.squeeze_classifier(threshold))
+        return nn.Sequential(self.squeeze_features(threshold), nn.Flatten(), self.squeeze_classifier(threshold))
 
     @property
     def device(self) -> torch.device:

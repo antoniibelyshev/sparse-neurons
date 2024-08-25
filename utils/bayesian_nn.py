@@ -33,6 +33,9 @@ class BayesianLinear(nn.Module):
 
         self.bias = Parameter(Tensor(out_features)) if bias else None
 
+        self.a = Parameter(torch.ones(out_features, 1), requires_grad=True)
+        self.b = Parameter(torch.ones(1, conv_dims[0]), requires_grad=True)
+
         assert linear_transform_type in {
             'linear', 'conv2d'}, 'Unsupported linear_transform type'
 
@@ -47,14 +50,24 @@ class BayesianLinear(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
-        nn.init.kaiming_uniform_(self.weight)
+        nn.init.kaiming_normal_(self.weight)
 
         with torch.no_grad():
             self.weight_log_var.copy_(safe_log(self.weight ** 2) - 5)
         
         if self.bias is not None:
-            bound = 1 / math.sqrt(self.conv_size)
-            nn.init.uniform_(self.bias, -bound, bound)
+            std = math.sqrt(2 / self.conv_size)
+            nn.init.normal_(self.bias, 0, std)
+
+        self.update_ab()
+
+    def update_ab(self, n_iter: int = 10):
+        s = self.weight.pow(2) + self.weight_var
+        if s.dim() > 2:
+            s = s.mean(list(range(2, self.weight.dim())))
+        for _ in range(n_iter):
+            self.a.data = (s / self.b).mean(1, keepdims=True)
+            self.b.data = (s / self.a).mean(0, keepdims=True)
 
     def forward(self, x: Tensor) -> Tensor:
         if self.training:
@@ -64,9 +77,24 @@ class BayesianLinear(nn.Module):
         return self.linear_transform(x, self.eval_weight, self.bias)
 
     def kl(self) -> Tensor:
-        kl = safe_log((self.weight.pow(
-            2) + self.weight_var).mean(list(range(1, self.weight.dim())))).sum() * self.conv_size
-        kl -= self.weight_log_var.sum()
+        # kl = safe_log((self.weight.pow(
+        #     2) + self.weight_var).mean(list(range(1, self.weight.dim())))).sum() * self.conv_size
+        # kl -= self.weight_log_var.sum()
+        # return kl / 2
+        # s = self.weight.pow(2) + self.weight_var
+        
+        # with torch.no_grad():
+        #     self.a.copy_((s / self.b).mean([1, *range(2, s.dim())], keepdims=True))
+        #     self.b.copy_((s / self.a).mean([0, *range(2, s.dim())], keepdims=True))
+
+        # sigma = (self.a * self.b).detach()
+        # return ((s.sum(list(range(2, s.dim()))) / sigma).sum() + safe_log(sigma).sum() - self.weight_log_var.sum() - math.prod(s.shape)) / 2
+
+        s = self.weight.pow(2) + self.weight_var
+        if s.dim() > 2:
+            s = s.sum(list(range(2, s.dim())))
+        kl = safe_log(self.a * self.b).sum() * math.prod(self.weight.shape[2:]) - self.weight_log_var.sum()
+        kl += (s / (self.a * self.b)).sum() - math.prod(self.weight.shape)
         return kl / 2
 
     def squeeze(self, in_mask: Tensor | None, threshold: float | None = None) -> nn.Module:
@@ -110,57 +138,3 @@ class BayesianLinear(nn.Module):
     @property
     def eval_weight(self) -> Tensor:
         return torch.where(self.get_mask(), self.weight, torch.zeros(1, device=self.device))
-
-
-class BayesianLeNet(nn.Module):
-    def __init__(
-            self,
-            in_features: int = 728,
-            num_classes: int = 10,
-            intermediate_dims: list[int] = [500, 300],
-            bias: bool = True,
-            threshold: float = 0.99,
-    ):
-            super(BayesianLeNet, self).__init__() # type: ignore
-
-            self.layers = nn.ModuleList()
-
-            for out_features in intermediate_dims:
-                self.layers.append(BayesianLinear(in_features, out_features, bias, threshold, linear_transform_type='linear'))
-                self.layers.append(nn.ReLU())
-                in_features = out_features
-
-            self.layers.append(nn.Linear(in_features, num_classes, bias))
-
-    def forward(self, x: Tensor) -> Tensor:
-        for layer in self.layers:
-            x = layer(x)
-        return x
-    
-    def kl(self) -> Tensor:
-        kl = torch.zeros(1, device=self.device)
-        for layer in self.layers:
-            if isinstance(layer, BayesianLinear):
-                kl += layer.kl()
-        return kl
-    
-    def squeeze(self, threshold: float | None = None) -> nn.Module:
-        squeezed_layers: list[nn.Module] = []
-
-        in_mask = None
-        for layer in self.layers:
-            if isinstance(layer, BayesianLinear):
-                layer = layer.squeeze(in_mask, threshold)
-                in_mask = layer.get_mask(threshold)
-                squeezed_layers.append(layer)
-            else:
-                squeezed_layers.append(layer)
-
-        return nn.Sequential(*squeezed_layers)
-    
-    @property
-    def device(self) -> torch.device:
-        return next(self.parameters()).device
-    
-    def get_bayesian_layers(self) -> list[BayesianLinear]:
-        return [layer for layer in self.layers if isinstance(layer, BayesianLinear)]
