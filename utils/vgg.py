@@ -2,6 +2,8 @@ import torch
 from torch import nn, Tensor
 from .bayesian_nn import BayesianLinear
 
+from .utils import safe_log
+
 
 class VGG(nn.Module):
     def __init__(
@@ -111,15 +113,9 @@ class BayesianVGG(nn.Module):
         self.avgpool = nn.AdaptiveAvgPool2d((7, 7))
 
         self.classifier = nn.Sequential(
-            nn.Linear(512 * 7 * 7, 512),
-            nn.BatchNorm1d(512),
+            BayesianLinear(512, 512, linear_transform_type='linear'),
             nn.ReLU(True),
-            nn.Dropout(),
-            nn.Linear(512, 512),
-            nn.BatchNorm1d(512),
-            nn.ReLU(True),
-            nn.Dropout(),
-            nn.Linear(512, num_classes),
+            BayesianLinear(512, num_classes, linear_transform_type='linear'),
         )
 
     def forward(self, x: Tensor) -> Tensor:
@@ -177,3 +173,24 @@ class BayesianVGG(nn.Module):
     
     def get_bayesian_layers(self) -> list[BayesianLinear]:
         return [layer for layer in self.features_layers if isinstance(layer, BayesianLinear)] + [layer for layer in self.classifier if isinstance(layer, BayesianLinear)]
+
+    def from_vgg(self, vgg: VGG) -> None:
+        for bayesian_layer, layer in zip(self.features_layers, vgg.features_layers):
+            if isinstance(bayesian_layer, BayesianLinear):
+                bayesian_layer.weight.data = layer.weight.data
+                
+                with torch.no_grad():
+                    bayesian_layer.weight_log_var.copy_(safe_log(self.weight ** 2) - 5)
+
+                if bayesian_layer.bias is not None:
+                    bayesian_layer.bias.data = layer.bias.data
+
+        for bayesian_layer, layer in zip(self.classifier, vgg.classifier):
+            if isinstance(bayesian_layer, BayesianLinear):
+                bayesian_layer.weight.data = layer.weight.data
+
+                with torch.no_grad():
+                    bayesian_layer.weight_log_var.copy_(safe_log(self.weight ** 2) - 5)
+
+                if bayesian_layer.bias is not None:
+                    bayesian_layer.bias.data = layer.bias.data
