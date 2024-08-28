@@ -26,7 +26,7 @@ class VGG(nn.Module):
 
         self.features_layers = nn.ModuleList()
 
-        for cfg in features_cfg:
+        for i, cfg in enumerate(features_cfg):
             if isinstance(cfg, int):
                 self.features_layers.append(nn.Conv2d(
                     in_channels,
@@ -43,10 +43,11 @@ class VGG(nn.Module):
                     nn.init.zeros_(self.features_layers[-1].bias)
 
                 in_channels = cfg
+
                 self.features_layers.append(nn.ReLU())
                 self.features_layers.append(nn.BatchNorm2d(cfg, eps=1e-3))
-                # self.features_layers.append(nn.Dropout2d(0.4 if i else 0.3))
-                self.features_layers.append(nn.Dropout2d(0.5))
+                self.features_layers.append(nn.Dropout2d(0.4 if i else 0.3))
+                # self.features_layers.append(nn.Dropout2d(0.5))
             elif cfg == 'M':
                 self.features_layers.pop(-1)
                 self.features_layers.append(nn.MaxPool2d(
@@ -60,14 +61,14 @@ class VGG(nn.Module):
         # self.avgpool = nn.AdaptiveAvgPool2d((7, 7))
 
         self.classifier = nn.Sequential(
-            # nn.Linear(512 * 7 * 7, 512),
-            # nn.BatchNorm1d(512),
-            # nn.ReLU(True),
-            nn.Dropout(0.7),
             nn.Linear(512, 512),
-            nn.BatchNorm1d(512),
             nn.ReLU(True),
-            nn.Dropout(0.7),
+            nn.BatchNorm1d(512),
+            nn.Dropout(),
+            nn.Linear(512, 512),
+            nn.ReLU(True),
+            nn.BatchNorm1d(512),
+            nn.Dropout(),
             nn.Linear(512, num_classes),
         )
 
@@ -97,23 +98,23 @@ class BayesianVGG(nn.Module):
 
         super(BayesianVGG, self).__init__()  # type: ignore
 
-        self.features_layers = nn.ModuleList()
+        self.features = nn.ModuleList()
 
         for cfg in features_cfg:
             if isinstance(cfg, int):
-                self.last_conv2d = BayesianLinear(
+                self.features.append(BayesianLinear(
                     (in_channels, conv_kernel_size, conv_kernel_size),
                     cfg,
                     linear_transform_type='conv2d',
                     stride=conv_stride,
                     padding=conv_padding
-                )
-                self.features_layers.append(self.last_conv2d)
+                ))
                 in_channels = cfg
 
-                self.features_layers.append(nn.ReLU())
+                self.features.append(nn.ReLU())
+                self.features.append(nn.BatchNorm2d(cfg))
             elif cfg == 'M':
-                self.features_layers.append(nn.MaxPool2d(
+                self.features.append(nn.MaxPool2d(
                     kernel_size=max_pool_kernel_size,
                     stride=max_pool_stride,
                     padding=max_pool_padding,
@@ -123,14 +124,30 @@ class BayesianVGG(nn.Module):
             
         # self.avgpool = nn.AdaptiveAvgPool2d((7, 7))
 
+        # self.classifier = nn.Sequential(
+        #     BayesianLinear(512, 512, linear_transform_type='linear'),
+        #     nn.ReLU(True),
+        #     nn.BatchNorm1d(512),
+        #     BayesianLinear(512, 512, linear_transform_type='linear'),
+        #     nn.ReLU(True),
+        #     nn.BatchNorm1d(512),
+        #     BayesianLinear(512, num_classes, linear_transform_type='linear'),
+        # )
+
         self.classifier = nn.Sequential(
-            BayesianLinear(512, 512, linear_transform_type='linear'),
+            nn.Linear(512, 512),
+            # nn.BatchNorm1d(512),
             nn.ReLU(True),
-            BayesianLinear(512, num_classes, linear_transform_type='linear'),
+            # nn.Dropout(),
+            nn.Linear(512, 512),
+            nn.BatchNorm1d(512),
+            nn.ReLU(True),
+            # nn.Dropout(),
+            nn.Linear(512, num_classes),
         )
 
     def forward(self, x: Tensor) -> Tensor:
-        for layer in self.features_layers:
+        for layer in self.features:
             x = layer(x)
         # x = self.avgpool(x)
         x = torch.flatten(x, 1)
@@ -139,19 +156,21 @@ class BayesianVGG(nn.Module):
     
     def kl(self) -> Tensor:
         kl = torch.zeros(1, device=self.device)
-        for layer in self.features_layers:
+        for layer in self.features:
             if isinstance(layer, BayesianLinear):
                 kl += layer.kl()
         for layer in self.classifier:
             if isinstance(layer, BayesianLinear):
                 kl += layer.kl()
+            if isinstance(layer, nn.Linear):
+                kl += layer.weight.pow(2).sum() + layer.bias.pow(2).sum()
         return kl
 
     def squeeze_features(self, threshold: float | None = None) -> nn.Module:
         squeezed_features: list[nn.Module] = []
 
         in_mask = None
-        for layer in self.features_layers:
+        for layer in self.features:
             if isinstance(layer, BayesianLinear):
                 layer = layer.squeeze(in_mask, threshold)
                 in_mask = layer.get_mask(threshold)
@@ -161,47 +180,73 @@ class BayesianVGG(nn.Module):
 
         return nn.Sequential(*squeezed_features)
 
-    def squeeze_classifier(self, threshold: float | None = None) -> nn.Module:
-        squeezed_classifier: list[nn.Module] = []
+    # def squeeze_classifier(self, threshold: float | None = None) -> nn.Module:
+    #     squeezed_classifier: list[nn.Module] = []
 
-        in_mask = self.last_conv2d.get_mask(threshold).reshape(-1, 1, 1).repeat(1, 7, 7).flatten(1)
-        for layer in self.classifier:
-            if isinstance(layer, BayesianLinear):
-                layer = layer.squeeze(in_mask, threshold)
-                in_mask = layer.get_mask(threshold)
-                squeezed_classifier.append(layer)
-            else:
-                squeezed_classifier.append(layer)
+    #     in_mask = self.last_conv2d.get_mask(threshold).reshape(-1, 1, 1).repeat(1, 7, 7).flatten(1)
+    #     for layer in self.classifier:
+    #         if isinstance(layer, BayesianLinear):
+    #             layer = layer.squeeze(in_mask, threshold)
+    #             in_mask = layer.get_mask(threshold)
+    #             squeezed_classifier.append(layer)
+    #         else:
+    #             squeezed_classifier.append(layer)
 
-        return nn.Sequential(*squeezed_classifier)
+    #     return nn.Sequential(*squeezed_classifier)
 
-    def squeeze(self, threshold: float | None = None) -> nn.Module:
-        return nn.Sequential(self.squeeze_features(threshold), nn.Flatten(), self.squeeze_classifier(threshold))
+    # def squeeze(self, threshold: float | None = None) -> nn.Module:
+    #     return nn.Sequential(self.squeeze_features(threshold), nn.Flatten(), self.squeeze_classifier(threshold))
 
     @property
     def device(self) -> torch.device:
         return next(self.parameters()).device
     
+    def get_conv2d_bayesian(self):
+        return [layer for layer in self.features if isinstance(layer, BayesianLinear)]
+
+    def get_fc_bayesian(self):
+        return [layer for layer in self.classifier if isinstance(layer, BayesianLinear)]
+
     def get_bayesian_layers(self) -> list[BayesianLinear]:
-        return [layer for layer in self.features_layers if isinstance(layer, BayesianLinear)] + [layer for layer in self.classifier if isinstance(layer, BayesianLinear)]
+        return self.get_conv2d_bayesian() + self.get_fc_bayesian()
 
     def from_vgg(self, vgg: VGG) -> None:
-        for bayesian_layer, layer in zip(self.features_layers, vgg.features_layers):
-            if isinstance(bayesian_layer, BayesianLinear):
-                bayesian_layer.weight.data = layer.weight.data
+        for layer, layer_ in zip(self.features, [layer for layer in vgg.features_layers if not isinstance(layer, nn.Dropout2d)]):
+            if isinstance(layer, BayesianLinear):
+                layer.weight.data = layer_.weight.data
+                layer.weight_std.data = layer_.weight.data * 1e-4
+
+                if layer.bias is not None:
+                    layer.bias.data = layer_.bias.data
+
+            if isinstance(layer, nn.BatchNorm2d):
+                layer.weight.data = layer_.weight.data.clone()
+                layer.bias.data = layer_.bias.data.clone()
                 
-                with torch.no_grad():
-                    bayesian_layer.weight_log_var.copy_(safe_log(self.weight ** 2) - 5)
+                layer.running_mean.data = layer_.running_mean.data.clone()
+                layer.running_var.data = layer_.running_var.data.clone()
 
-                if bayesian_layer.bias is not None:
-                    bayesian_layer.bias.data = layer.bias.data
+                layer.momentum = layer_.momentum
+                layer.eps = layer_.eps
 
-        for bayesian_layer, layer in zip(self.classifier, vgg.classifier):
-            if isinstance(bayesian_layer, BayesianLinear):
-                bayesian_layer.weight.data = layer.weight.data
+        # for layer, layer_ in zip(self.classifier, [layer for layer in vgg.classifier if not isinstance(layer, nn.Dropout)]):
+        #     if isinstance(layer, BayesianLinear):
+        #         layer.weight.data = layer_.weight.data
+        #         layer.weight_std.data = layer_.weight * 1e-1
 
-                with torch.no_grad():
-                    bayesian_layer.weight_log_var.copy_(safe_log(self.weight ** 2) - 5)
+        #         if layer.bias is not None:
+        #             layer.bias.data = layer_.bias.data
 
-                if bayesian_layer.bias is not None:
-                    bayesian_layer.bias.data = layer.bias.data
+        #         layer.update_ab()
+
+        #     if isinstance(layer, nn.BatchNorm1d):
+        #         layer.weight.data = layer_.weight.data.clone()
+        #         layer.bias.data = layer_.bias.data.clone()
+                
+        #         layer.running_mean.data = layer_.running_mean.data.clone()
+        #         layer.running_var.data = layer_.running_var.data.clone()
+
+        #         layer.momentum = layer_.momentum
+        #         layer.eps = layer_.eps
+
+        self.classifier = vgg.classifier

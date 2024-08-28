@@ -12,7 +12,6 @@ import matplotlib.pyplot as plt
 
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-threshold = 0.99
 
 
 class Trainer:
@@ -112,7 +111,7 @@ class BayesianModelTrainer(Trainer):
             bayesian_conv_layers = [layer for layer in self.model.get_bayesian_layers() if isinstance(layer, BayesianLinear)]
 
             for i, layer in enumerate(bayesian_conv_layers):
-                mask = layer.equivalent_dropout_rate < threshold
+                mask = layer.equivalent_dropout_rate < layer.threshold
                 sparsity = 1 - mask.float().mean()
                 neuron_sparsity = (mask.sum(list(range(1, mask.dim()))) == 0).float().mean()
 
@@ -122,24 +121,24 @@ class BayesianModelTrainer(Trainer):
                 metrics[f"sparsity_{i}"] = sparsity.item()
                 metrics[f"neuron_sparsity_{i}"] = neuron_sparsity.item()
 
-                if epoch % 10 == 0:
-                    min_dropout_rate = layer.equivalent_dropout_rate.amin(list(range(1, mask.dim())))
+                # if epoch % 10 == 0:
+                #     min_dropout_rate = layer.equivalent_dropout_rate.amin(list(range(1, mask.dim())))
 
-                    plt.figure(figsize=(10, 6))
-                    sorted_values = sorted(1 - min_dropout_rate.detach().cpu(), reverse=True)
-                    plt.bar(range(len(sorted_values)), sorted_values)
-                    plt.xlabel('Neuron Index')
-                    plt.ylabel('1 - max(equivalent_dropout_rate)')
-                    plt.title('Sorted 1 - max(equivalent_dropout_rate) per Layer')
-                    plt.yscale('log')
+                #     plt.figure(figsize=(10, 6))
+                #     sorted_values = sorted(1 - min_dropout_rate.detach().cpu(), reverse=True)
+                #     plt.bar(range(len(sorted_values)), sorted_values)
+                #     plt.xlabel('Neuron Index')
+                #     plt.ylabel('1 - max(equivalent_dropout_rate)')
+                #     plt.title('Sorted 1 - max(equivalent_dropout_rate) per Layer')
+                #     plt.yscale('log')
 
-                    plt.tight_layout()
-                    plt_path = "sparsity_plot.png"
-                    plt.savefig(plt_path)
+                #     plt.tight_layout()
+                #     plt_path = "sparsity_plot.png"
+                #     plt.savefig(plt_path)
 
-                    wandb.log({f"sparsity_plot layer {i}": wandb.Image(plt_path)})
+                #     wandb.log({f"sparsity_plot layer {i}": wandb.Image(plt_path)})
 
-                    plt.close()
+                #     plt.close()
 
             total_neuron_sparsity = 100. * sparsed_neurons.item() / total_neurons.item()
             metrics["total_neuron_sparsity"] = total_neuron_sparsity
