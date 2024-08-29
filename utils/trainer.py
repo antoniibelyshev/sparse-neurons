@@ -8,11 +8,6 @@ from .bayesian_nn import BayesianLinear
 
 import wandb
 
-import matplotlib.pyplot as plt
-
-
-DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
 
 class Trainer:
     def __init__(
@@ -25,8 +20,8 @@ class Trainer:
             *,
             criterion: Callable[[Tensor, Tensor], Tensor] = nn.CrossEntropyLoss(),
             epochs: int = 100,
-            device: torch.device = DEVICE,
-            reg_coef_lambda: Callable[[int], float] = lambda epoch: 1.0,
+            device: torch.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu'),
+            reg_coef_lambda: Callable[[int], float] = lambda _: 1.0,
     ) -> None:
         self.model = model.to(device)
         self.device = device
@@ -46,7 +41,12 @@ class Trainer:
     def log(self, **metrics: float) -> None:
         wandb.log(metrics) # type: ignore
 
-    def train(self, name="default experiment", project: str = "neuron sparsity", entity: str = "antonii-belyshev") -> None:
+    def train(
+            self,
+            entity: str = "antonii-belyshev",
+            project: str = "neuron sparsity",
+            name: str = "default experiment",
+    ) -> None:
         run = wandb.init(name=name, project=project, entity=entity) # type: ignore
 
         for epoch in range(self.epochs):
@@ -74,7 +74,7 @@ class Trainer:
 
         run.finish() # type: ignore
 
-    def test(self, epoch: int) -> dict[str, float]:
+    def test(self, epoch: int | None = None) -> dict[str, float]:
         metrics: dict[str, float] = {}
 
         self.model.eval()
@@ -92,14 +92,15 @@ class Trainer:
 
             metrics["eval_loss"] = loss / len(self.test_loader)
             metrics["accuracy"] = 100. * correct / self.n_test
-
-        metrics["epoch"] = epoch
+        
+        if epoch is not None:
+            metrics["epoch"] = epoch
 
         return metrics
 
 
 class BayesianModelTrainer(Trainer):
-    def test(self, epoch: int) -> dict[str, float]:
+    def test(self, epoch: int | None = None) -> dict[str, float]:
         metrics = super().test(epoch)
 
         self.model.eval()
@@ -111,36 +112,16 @@ class BayesianModelTrainer(Trainer):
             bayesian_conv_layers = [layer for layer in self.model.get_bayesian_layers() if isinstance(layer, BayesianLinear)]
 
             for i, layer in enumerate(bayesian_conv_layers):
-                mask = layer.equivalent_dropout_rate < layer.threshold
-                sparsity = 1 - mask.float().mean()
-                neuron_sparsity = (mask.sum(list(range(1, mask.dim()))) == 0).float().mean()
+                sparsity = 1 - layer.get_weight_mask().float().mean()
+                neuron_sparsity = 1 - layer.get_out_mask().float().mean()
 
-                total_neurons += mask.shape[0]
-                sparsed_neurons += (mask.sum(list(range(1, mask.dim()))) == 0).int().sum().item()
+                total_neurons += layer.out_features
+                sparsed_neurons += int(layer.out_features * neuron_sparsity)
 
                 metrics[f"sparsity_{i}"] = sparsity.item()
                 metrics[f"neuron_sparsity_{i}"] = neuron_sparsity.item()
 
-                # if epoch % 10 == 0:
-                #     min_dropout_rate = layer.equivalent_dropout_rate.amin(list(range(1, mask.dim())))
-
-                #     plt.figure(figsize=(10, 6))
-                #     sorted_values = sorted(1 - min_dropout_rate.detach().cpu(), reverse=True)
-                #     plt.bar(range(len(sorted_values)), sorted_values)
-                #     plt.xlabel('Neuron Index')
-                #     plt.ylabel('1 - max(equivalent_dropout_rate)')
-                #     plt.title('Sorted 1 - max(equivalent_dropout_rate) per Layer')
-                #     plt.yscale('log')
-
-                #     plt.tight_layout()
-                #     plt_path = "sparsity_plot.png"
-                #     plt.savefig(plt_path)
-
-                #     wandb.log({f"sparsity_plot layer {i}": wandb.Image(plt_path)})
-
-                #     plt.close()
-
-            total_neuron_sparsity = 100. * sparsed_neurons.item() / total_neurons.item()
+            total_neuron_sparsity = sparsed_neurons.item() / total_neurons.item()
             metrics["total_neuron_sparsity"] = total_neuron_sparsity
 
         return metrics

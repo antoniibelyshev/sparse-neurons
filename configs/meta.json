@@ -1,0 +1,10 @@
+{
+    "model": "VGG",
+    "prefix": "",
+    "dataset": "CIFAR",
+    "wandb_info": {
+        "entity": "antonii-belyshev",
+        "project": "neuron sparsity",
+        "name": none
+    }
+}

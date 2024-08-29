@@ -2,45 +2,40 @@ import torch
 from torch import nn, Tensor
 from torch.nn.parameter import Parameter
 
-import math
 from typing import Any
 from functools import partial
 
-from .utils import safe_sqrt, safe_log, safe_div
+import numpy as np
 
-
-DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+from .utils import safe_sqrt, safe_log, t_log_likelihood
 
 
 class BayesianLinear(nn.Module):
     def __init__(
         self,
-        conv_dims: int | tuple[int, ...],
+        in_features: int,
         out_features: int,
+        conv_dims: tuple[int, ...] | None = None,
+        *,
         bias: bool = True,
         threshold: float = 0.99,
-        *,
         linear_transform_type: str,
         **linear_transform_kwargs: Any
     ):
         super(BayesianLinear, self).__init__()  # type: ignore
 
-        if isinstance(conv_dims, int):
-            conv_dims = (conv_dims,)
+        self.in_features = in_features
+        self.out_features = out_features
 
-        self.weight = Parameter(Tensor(out_features, *conv_dims))
-        self.weight_std = Parameter(Tensor(out_features, *conv_dims))
+        self.weight = Parameter(Tensor(out_features, in_features, *(conv_dims or ())))
+        self.weight_std = Parameter(Tensor(out_features, in_features, *(conv_dims or ())))
 
         self.bias = Parameter(Tensor(out_features)) if bias else None
-
-        assert linear_transform_type in {
-            'linear', 'conv2d'}, 'Unsupported linear_transform type'
 
         self.linear_transform_type = linear_transform_type
         self.linear_transform_kwargs = linear_transform_kwargs
 
-        self.linear_transform = partial(
-            getattr(nn.functional, linear_transform_type), **linear_transform_kwargs)
+        self.linear_transform = partial(getattr(nn.functional, linear_transform_type), **linear_transform_kwargs)
 
         self.threshold = threshold
 
@@ -53,8 +48,6 @@ class BayesianLinear(nn.Module):
             self.weight_std.copy_(self.weight * 1e-4)
         
         if self.bias is not None:
-            # std = math.sqrt(2 / math.prod(self.weight.shape[1:]))
-            # nn.init.normal_(self.bias, 0, std)
             nn.init.constant_(self.bias, 0)
 
     def forward(self, x: Tensor) -> Tensor:
@@ -65,20 +58,18 @@ class BayesianLinear(nn.Module):
         return self.linear_transform(x, self.eval_weight, self.bias)
 
     def kl(self) -> Tensor:
-        a = torch.ones(self.weight.shape[0], 1, device=self.device)
-        b = torch.ones(1, self.weight.shape[1], device=self.device)
-
         s = self.weight.pow(2) + self.weight_std.pow(2)
         if s.dim() > 2:
             s = s.mean(list(range(2, s.dim())))
 
-        for _ in range(3):
-            a = (s / b).mean(1, keepdims=True)
-            b = (s / a).mean(0, keepdims=True)
+        a = torch.ones(self.out_features, 1, device=self.device)
+        b = torch.ones(1, self.in_features, device=self.device)
 
-        kl = (safe_log(a).mean() + safe_log(b).mean()) * self.weight.numel()
-        
-        # kl = safe_log((self.weight.pow(2) + self.weight_std.pow(2)).mean(list(range(1, self.weight.dim())))).mean() * self.weight.numel()
+        for _ in range(3):
+            a = (s / b).mean(1, keepdims=True) # type: ignore
+            b = (s / a).mean(0, keepdims=True) # type: ignore
+
+        kl = (safe_log(a).mean() + safe_log(b).mean()) * self.weight.numel() # type: ignore
         kl -= safe_log(self.weight_std.pow(2)).sum()
 
         if self.bias is not None:
@@ -95,9 +86,36 @@ class BayesianLinear(nn.Module):
         alpha = self.weight.pow(2) / self.weight_std.pow(2)
         return 1 / (alpha + 1)
 
-    def get_mask(self, threshold: float | None = None) -> Tensor:
+    def get_weight_mask(self, threshold: float | None = None) -> Tensor:
         return self.equivalent_dropout_rate < (threshold or self.threshold)
+    
+    def get_in_mask(self) -> Tensor:
+        return self.get_weight_mask().any([0, *range(2, self.weight.dim())]) > 0
+    
+    def get_out_mask(self) -> Tensor:
+        return self.get_weight_mask().any(list(range(1, self.weight.dim()))) > 0
 
     @property
     def eval_weight(self) -> Tensor:
-        return torch.where(self.get_mask(), self.weight, torch.zeros(1, device=self.device))
+        return torch.where(self.get_weight_mask(), self.weight, torch.zeros(1, device=self.device))
+
+
+class TDistributedBayesianLinear(BayesianLinear):
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        conv_dims: tuple[int, ...] | None = None,
+        **kwargs: Any,
+    ):
+        super(TDistributedBayesianLinear, self).__init__(in_features, out_features, conv_dims, **kwargs)  # type: ignore
+
+        self.register_buffer("nu", torch.ones(out_features))
+
+        self.reset_parameters()
+
+    def kl(self) -> Tensor:
+        samples = self.weight + torch.randn_like(self.weight_std) * self.weight_std
+        kl = t_log_likelihood(samples, self.nu)
+        kl -= 0.5 * (safe_log(self.weight_std.pow(2)).sum() + (np.log(2 * np.pi) + 1) * self.weight.numel())
+        return kl / 2
