@@ -9,14 +9,14 @@ class LeNet(nn.Module):
             self,
             in_features: int = 784,
             num_classes: int = 10,
-            intermediate_dims: list[int] = [500, 300],
+            cfg: list[int] = [500, 300],
             bias: bool = True,
     ):
         super(LeNet, self).__init__() # type: ignore
 
         self.layers = nn.ModuleList()
 
-        for out_features in intermediate_dims:
+        for out_features in cfg:
             self.layers.append(nn.Linear(in_features, out_features, bias))
             self.layers.append(nn.ReLU())
             in_features = out_features
@@ -34,7 +34,7 @@ class BayesianLeNet(nn.Module):
             self,
             in_features: int = 784,
             num_classes: int = 10,
-            intermediate_dims: list[int] = [500, 300],
+            cfg: list[int] = [500, 300],
             bias: bool = True,
             threshold: float = 0.99,
     ):
@@ -45,7 +45,7 @@ class BayesianLeNet(nn.Module):
 
         self.layers = nn.ModuleList()
 
-        for out_features in intermediate_dims:
+        for out_features in cfg:
             self.layers.append(BayesianLinear(in_features, out_features, bias=bias, threshold=threshold, linear_transform_type='linear'))
             self.layers.append(nn.ReLU())
             in_features = out_features
