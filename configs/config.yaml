@@ -1,0 +1,6 @@
+defaults:
+  - model: model
+  - optim: optim
+  - data: data
+  - trainer: trainer
+  - meta: meta
