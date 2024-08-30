@@ -1,7 +1,7 @@
 {
-    "model": "VGG",
+    "model": "LeNet",
     "prefix": "",
-    "dataset": "CIFAR",
+    "dataset": "MNIST",
     "wandb_info": {
         "entity": "antonii-belyshev",
         "project": "neuron sparsity",

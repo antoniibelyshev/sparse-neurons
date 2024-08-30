@@ -49,7 +49,22 @@ def train_model(cfg: DictConfig, prefix: str | None = None) -> None:
 
     train_loader, test_loader = utils.get_dataloaders(cfg.meta.dataset, **cfg.data[cfg.meta.dataset])
 
-    trainer = utils.Trainer(model, train_loader, test_loader, optimizer, scheduler, **cfg.trainer[model_name_])
+    if model_name_ == "BayesianVGG":
+        def reg_coef_lambda(epoch: int) -> float:
+            return min(1., 0.5 ** (8 - epoch // 50))
+    elif model_name_ == "BayesianLeNet":
+        def reg_coef_lambda(epoch: int) -> float:
+            if epoch < 10:
+                return 0.
+            elif epoch < 60:
+                return 2 ** ((epoch - 10) / 50) - 1
+            else:
+                return 1.
+    else:
+        def reg_coef_lambda(epoch: int) -> float:
+            return 1.
+
+    trainer = utils.Trainer(model, train_loader, test_loader, optimizer, scheduler, reg_coef_lambda=reg_coef_lambda, **cfg.trainer[model_name_])
 
     wandb_info = cfg.meta.wandb_info
     if wandb_info.name is None:
@@ -68,7 +83,7 @@ def train_model(cfg: DictConfig, prefix: str | None = None) -> None:
 
 
 def train(cfg: DictConfig) -> None:
-    if cfg["meta"]["prefix"] == "All":
+    if cfg.meta.prefix == "All":
         for prefix in ["", "Bayesian", "Squeezed"]:
             train_model(cfg, prefix)
 
@@ -76,7 +91,7 @@ def train(cfg: DictConfig) -> None:
         train_model(cfg)
 
 
-@hydra.main(config_path="config", config_name="config")
+@hydra.main(config_path="configs", config_name="config")
 def main(cfg: DictConfig) -> None:
     train(cfg)
 

@@ -1,9 +1,9 @@
 {
     "LeNet": {
-        "epochs": 100
+        "epochs": 200
     },
     "BayesianLeNet": {
-        "epochs": 100
+        "epochs": 200
     },
     "VGG": {
         "epochs": 300

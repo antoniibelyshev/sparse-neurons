@@ -1,4 +1,26 @@
 {
+    "LeNet": {
+        "optim_class": "Adam",
+        "optim_kwargs": {
+            "lr": 0.001,
+        },
+        "scheduler_class": "StepLR",
+        "scheduler_kwargs": {
+            "step_size": 1,
+            "gamma": 0.98
+        }
+    },
+    "BayesianLeNet": {
+        "optim_class": "Adam",
+        "optim_kwargs": {
+            "lr": 0.001,
+        },
+        "scheduler_class": "StepLR",
+        "scheduler_kwargs": {
+            "step_size": 1,
+            "gamma": 0.98
+        }
+    },
     "VGG": {
         "optim_class": "SGD",
         "optim_kwargs": {
