@@ -1,10 +1,10 @@
 {
-    "model": "LeNet",
-    "prefix": "",
-    "dataset": "MNIST",
-    "wandb_info": {
-        "entity": "antonii-belyshev",
-        "project": "neuron sparsity",
-        "name": none
+    model: LeNet,
+    prefix: All,
+    dataset: MNIST,
+    wandb_info: {
+        entity: antonii-belyshev,
+        project: neuron sparsity,
+        name: null
     }
 }

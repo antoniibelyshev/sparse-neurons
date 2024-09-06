@@ -6,6 +6,10 @@ from torchvision.transforms import Compose, ToTensor, Normalize
 from torchvision.datasets import MNIST, CIFAR10
 
 from typing import Any
+import os
+
+
+data_dir = os.path.join(os.getcwd(), "data")
 
 
 class FlattenTransform:
@@ -72,8 +76,8 @@ def get_targets(dataset: Dataset[tuple[Tensor, Tensor]]) -> Tensor:
 
 
 def get_mnist_dataloaders(
-        train_batch_size: int = 64,
-        test_batch_size: int = 1000,
+        batch_size_train: int = 64,
+        batch_size_test: int = 1000,
         **train_kwargs: Any
 ) -> tuple[DataLoader[tuple[Tensor, Tensor]], DataLoader[tuple[Tensor, Tensor]]]:
     transform = Compose([ # type: ignore
@@ -81,17 +85,17 @@ def get_mnist_dataloaders(
         Normalize((0.1307,), (0.3081,)),
         FlattenTransform(),
     ])
-    train_dataset = MNIST(root='./data', train=True, download=True, transform=transform)
-    test_dataset = MNIST(root='./data', train=False, download=True, transform=transform)
-    train_loader: DataLoader[tuple[Tensor, ...]] = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=True, **train_kwargs)
-    test_loader: DataLoader[tuple[Tensor, ...]] = DataLoader(test_dataset, batch_size=test_batch_size, shuffle=False)
+    train_dataset = MNIST(root=data_dir, train=True, download=True, transform=transform)
+    test_dataset = MNIST(root=data_dir, train=False, download=True, transform=transform)
+    train_loader: DataLoader[tuple[Tensor, ...]] = DataLoader(train_dataset, batch_size=batch_size_train, shuffle=True, **train_kwargs)
+    test_loader: DataLoader[tuple[Tensor, ...]] = DataLoader(test_dataset, batch_size=batch_size_test, shuffle=False)
 
     return train_loader, test_loader # type: ignore
 
 
 def get_cifar_dataloaders(
-        train_batch_size: int = 128,
-        test_batch_size: int = 1000,
+        batch_size_train: int = 128,
+        batch_size_test: int = 1000,
         **train_kwargs: Any
 ) -> tuple[DataLoader[tuple[Tensor, Tensor]], DataLoader[tuple[Tensor, Tensor]]]:
     transform = Compose([
@@ -99,15 +103,16 @@ def get_cifar_dataloaders(
         RGB2YUVTransform(),
     ])
 
-    raw_train_dataset = CIFAR10(root='./data', train=True, download=True, transform=transform)
-    raw_test_dataset = CIFAR10(root='./data', train=False, download=True, transform=transform)
+
+    raw_train_dataset = CIFAR10(root=data_dir, train=True, download=True, transform=transform)
+    raw_test_dataset = CIFAR10(root=data_dir, train=False, download=True, transform=transform)
 
     norm = Normalization()
     train_dataset = TensorDataset(norm.fit_transform(get_images(raw_train_dataset)), get_targets(raw_train_dataset))
     test_dataset = TensorDataset(norm.transform(get_images(raw_test_dataset)), get_targets(raw_test_dataset))
 
-    train_loader: DataLoader[tuple[Tensor, ...]] = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=True, **train_kwargs)
-    test_loader: DataLoader[tuple[Tensor, ...]] = DataLoader(test_dataset, batch_size=test_batch_size, shuffle=False)
+    train_loader: DataLoader[tuple[Tensor, ...]] = DataLoader(train_dataset, batch_size=batch_size_train, shuffle=True, **train_kwargs)
+    test_loader: DataLoader[tuple[Tensor, ...]] = DataLoader(test_dataset, batch_size=batch_size_test, shuffle=False)
 
     return train_loader, test_loader # type: ignore
 

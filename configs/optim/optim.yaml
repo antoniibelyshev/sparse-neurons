@@ -1,48 +1,48 @@
 {
-    "LeNet": {
-        "optim_class": "Adam",
-        "optim_kwargs": {
-            "lr": 0.001,
+    LeNet: {
+        optim_class: Adam,
+        optim_kwargs: {
+            lr: 0.001,
         },
-        "scheduler_class": "StepLR",
-        "scheduler_kwargs": {
-            "step_size": 1,
-            "gamma": 0.98
+        scheduler_class: StepLR,
+        scheduler_kwargs: {
+            step_size: 1,
+            gamma: 0.98
         }
     },
-    "BayesianLeNet": {
-        "optim_class": "Adam",
-        "optim_kwargs": {
-            "lr": 0.001,
+    BayesianLeNet: {
+        optim_class: Adam,
+        optim_kwargs: {
+            lr: 0.001,
         },
-        "scheduler_class": "StepLR",
-        "scheduler_kwargs": {
-            "step_size": 1,
-            "gamma": 0.98
+        scheduler_class: StepLR,
+        scheduler_kwargs: {
+            step_size: 1,
+            gamma: 0.98
         }
     },
-    "VGG": {
-        "optim_class": "SGD",
-        "optim_kwargs": {
-            "lr": 0.1,
-            "momentum": 0.9,
-            "weight_decay": 0.0005
+    VGG: {
+        optim_class: SGD,
+        optim_kwargs: {
+            lr: 0.1,
+            momentum: 0.9,
+            weight_decay: 0.0005
         },
-        "scheduler_class": "StepLR",
-        "scheduler_kwargs": {
-            "step_size": 1,
-            "gamma": 0.98
+        scheduler_class: StepLR,
+        scheduler_kwargs: {
+            step_size: 1,
+            gamma: 0.98
         }
     },
-    "BayesianVGG": {
-        "optim_class": "Adam",
-        "optim_kwargs": {
-            "lr": 1e-3
+    BayesianVGG: {
+        optim_class: Adam,
+        optim_kwargs: {
+            lr: 0.001
         },
-        "scheduler_class": "StepLR",
-        "scheduler_kwargs": {
-            "step_size": 25,
-            "gamma": 0.6
+        scheduler_class: StepLR,
+        scheduler_kwargs: {
+            step_size: 50,
+            gamma: 0.5
         }
     }
 }

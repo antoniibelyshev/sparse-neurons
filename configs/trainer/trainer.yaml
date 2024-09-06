@@ -1,14 +1,14 @@
 {
-    "LeNet": {
-        "epochs": 200
+    LeNet: {
+        epochs: 200
     },
-    "BayesianLeNet": {
-        "epochs": 200
+    BayesianLeNet: {
+        epochs: 200
     },
-    "VGG": {
-        "epochs": 300
+    VGG: {
+        epochs: 300
     },
-    "BayesianVGG": {
-        "epochs": 500
+    BayesianVGG: {
+        epochs: 500
     }
 }

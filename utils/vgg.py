@@ -106,6 +106,7 @@ class BayesianVGG(nn.Module):
         max_pool_kernel_size: int = 2,
         max_pool_stride: int = 2,
         max_pool_padding: int = 0,
+        bias: bool = True,
         threshold: float = 0.99,
     ) -> None:
 
@@ -125,6 +126,7 @@ class BayesianVGG(nn.Module):
                     in_channels,
                     cfg_,
                     (conv_kernel_size, conv_kernel_size),
+                    bias=bias,
                     linear_transform_type='conv2d',
                     stride=conv_stride,
                     padding=conv_padding,
@@ -204,6 +206,7 @@ class BayesianVGG(nn.Module):
                 cfg.append(int(layer.get_out_mask().sum()))
             if isinstance(layer, nn.MaxPool2d):
                 cfg.append('M')
+        cfg[-2] = 512
         return cfg
 
     def squeeze(self) -> VGG:
@@ -216,5 +219,7 @@ class BayesianVGG(nn.Module):
 
             if layer.bias is not None and layer_.bias is not None:
                 layer.bias.data = layer_.bias.data[out_mask]
+
+        vgg.classifier = self.classifier
 
         return vgg

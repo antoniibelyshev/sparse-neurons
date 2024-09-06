@@ -1,20 +1,20 @@
 {
-    "LeNet": {
-        "in_features": 784,
-        "num_classes": 10,
-        "cfg": [500, 300],
-        "bias": true
+    LeNet: {
+        in_features: 784,
+        num_classes: 10,
+        cfg: [500, 300],
+        bias: true
     },
-    "VGG": {
-        "cfg": "VGG16",
-        "in_channels": 3,
-        "num_classes": 10,
-        "conv_kernel_size": 3,
-        "conv_padding": 1,
-        "conv_stride": 1,
-        "max_pool_kernel_size": 2,
-        "max_pool_stride": 2,
-        "max_pool_padding": 0,
-        "bias": true
+    VGG: {
+        cfg: VGG16,
+        in_channels: 3,
+        num_classes: 10,
+        conv_kernel_size: 3,
+        conv_padding: 1,
+        conv_stride: 1,
+        max_pool_kernel_size: 2,
+        max_pool_stride: 2,
+        max_pool_padding: 0,
+        bias: true
     }
 }

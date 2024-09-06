@@ -7,10 +7,15 @@ from functools import partial
 
 import numpy as np
 
-from .utils import safe_sqrt, safe_log, t_log_likelihood
+from .utils import safe_sqrt, safe_log, safe_div
+from .gaussian_mixture import em_gaussian_mixture, e_step, m_step
 
 
 class BayesianLinear(nn.Module):
+    sigma1: Tensor | None = None
+    sigma2: Tensor | None = None
+    p: Tensor | None = None
+
     def __init__(
         self,
         in_features: int,
@@ -58,24 +63,27 @@ class BayesianLinear(nn.Module):
         return self.linear_transform(x, self.eval_weight, self.bias)
 
     def kl(self) -> Tensor:
-        s = self.weight.pow(2) + self.weight_std.pow(2)
-        if s.dim() > 2:
-            s = s.mean(list(range(2, s.dim())))
+        x = safe_sqrt(self.weight.pow(2) + self.weight_std.pow(2))
 
-        a = torch.ones(self.out_features, 1, device=self.device)
-        b = torch.ones(1, self.in_features, device=self.device)
+        dims = list(range(1, x.dim()))
+        if self.sigma1 is None:
+            _, self.sigma1, self.sigma2, self.p = em_gaussian_mixture(x.detach(), dims, n_iter=10)
 
-        for _ in range(3):
-            a = (s / b).mean(1, keepdims=True) # type: ignore
-            b = (s / a).mean(0, keepdims=True) # type: ignore
+        pi = e_step(x, self.sigma1.detach(), self.sigma2.detach(), self.p.detach())
+        self.sigma1, self.sigma2, self.p = m_step(x, pi, dims)
 
-        kl = (safe_log(a).mean() + safe_log(b).mean()) * self.weight.numel() # type: ignore
-        kl -= safe_log(self.weight_std.pow(2)).sum()
+        log_p1 = safe_log(self.p) - safe_log(self.sigma1) - 0.5 * safe_div(x, self.sigma1).pow(2)
+        log_p2 = safe_log(1 - self.p) - safe_log(self.sigma2) - 0.5 * safe_div(x, self.sigma2).pow(2)
 
-        if self.bias is not None:
-            kl += self.bias.pow(2).sum()
+        m = torch.where(log_p1 > log_p2, log_p1, log_p2)
 
-        return kl / 2
+        log_p1 -= m
+        log_p2 -= m
+
+        kl = -m.sum() - safe_log(log_p1.exp() + log_p2.exp()).sum()
+        kl -= 0.5 * (safe_log(self.weight_std.pow(2)).sum() + self.weight.numel())
+
+        return kl
 
     @property
     def device(self) -> torch.device:
@@ -90,32 +98,11 @@ class BayesianLinear(nn.Module):
         return self.equivalent_dropout_rate < (threshold or self.threshold)
     
     def get_in_mask(self) -> Tensor:
-        return self.get_weight_mask().any([0, *range(2, self.weight.dim())]) > 0
+        return self.get_weight_mask().sum([0, *range(2, self.weight.dim())]) > 0
     
     def get_out_mask(self) -> Tensor:
-        return self.get_weight_mask().any(list(range(1, self.weight.dim()))) > 0
+        return self.get_weight_mask().sum(list(range(1, self.weight.dim()))) > 0
 
     @property
     def eval_weight(self) -> Tensor:
         return torch.where(self.get_weight_mask(), self.weight, torch.zeros(1, device=self.device))
-
-
-class TDistributedBayesianLinear(BayesianLinear):
-    def __init__(
-        self,
-        in_features: int,
-        out_features: int,
-        conv_dims: tuple[int, ...] | None = None,
-        **kwargs: Any,
-    ):
-        super(TDistributedBayesianLinear, self).__init__(in_features, out_features, conv_dims, **kwargs)  # type: ignore
-
-        self.register_buffer("nu", torch.ones(out_features))
-
-        self.reset_parameters()
-
-    def kl(self) -> Tensor:
-        samples = self.weight + torch.randn_like(self.weight_std) * self.weight_std
-        kl = t_log_likelihood(samples, self.nu)
-        kl -= 0.5 * (safe_log(self.weight_std.pow(2)).sum() + (np.log(2 * np.pi) + 1) * self.weight.numel())
-        return kl / 2
