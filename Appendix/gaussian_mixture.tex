@@ -1,0 +1,40 @@
+\documentclass{article}
+
+\usepackage{amssymb, amsmath}
+
+\newcommand{\N}{\mathcal{N}}
+\newcommand{\E}{\mathbb{E}}
+\renewcommand{\L}{\mathcal{L}}
+
+\begin{document}
+
+\section{Appendix: KL minimization}
+
+To optimize the parameters $\theta = (\sigma_1, \sigma_2, p)$, we need to maximize the following objective function:
+
+\begin{equation}
+    p(W|\theta) = \prod_{ij} \left( p_i\N(W_{ij}|0, {\sigma_1}_i^2) + (1 - p_i)\N(W_{ij}|0, {\sigma_2}_i^2)\right)
+\end{equation}
+\begin{equation}
+    \E_q \log p(W|\theta) \to \max_{\theta}
+\end{equation}
+To facilitate this optimization, we introduce latent variables $z_{ij}$, which denote the assignment of each weight $W_{ij}$ to one of the two Gaussian components:
+\begin{equation}
+    p(W, z | \theta) = \prod_{ij} \left(p_i\N(W_{ij}|0, {\sigma_1}_i^2)\right)^{z_{ij}}\left((1 - p_i)\N(W_{ij}|0, {\sigma_2}_i^2)\right)^{1 - z_{ij}}
+\end{equation}
+We can then derive a lower bound for the objective function:
+\begin{multline}
+    \E_q \log p(W|\theta) =
+    \E_q \E_r \left( \log p(W, z|\theta) - \log r(z) \right) + \E_q KL(r(z) \| p(z|W, \theta)) \ge \\
+    \E_r \left( \E_q \log p(W, z|\theta) - \log r(z) \right) =
+    \E_r \left( \log p(\tilde{W}, z|\theta) - \log r(z) \right) = \L_{GM}(\theta, r)
+\end{multline}
+where $\tilde{W}_{ij} = \sqrt{\mu_{ij}^2 + s_{ij}^2}$. This lower bound is equivalent to the objective function of a Gaussian mixture model applied to $\tilde{W}$:
+
+\begin{equation}
+    p(\tilde{W}|\theta) = \prod_{ij} \left( p_i\N(\tilde{W}_{ij}|0, {\sigma_1}_i^2) + (1 - p_i)\N(\tilde{W}_{ij}|0, {\sigma_2}_i^2)\right) \to \max_{\theta}
+\end{equation}
+
+Thus, we can solve this optimization problem using the same EM algorithm that is applied to a Gaussian mixture model. After applying the EM algorithm, the lower bound $\L_{GM}(\theta, r)$ will coincide with $\log p(\tilde{W}|\theta)$. Consequently, in the optimization step with respect to $q$, we will use the lower bound $p(\tilde{W}|\theta)$ instead of $\E_q \log p(W|\theta)$.
+
+\end{document}
