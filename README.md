@@ -10,6 +10,16 @@ This approach holds potential for improving inference efficiency in deep neural 
 
 ---
 
+## Table of Contents
+
+1. [Introduction](#introduction)
+2. [Method](#method)
+3. [Optimization](#optimization)
+4. [Experiments](#experiments)
+5. [Results and Conclusion](#results-and-conclusion)
+
+---
+
 ## Introduction
 
 ### Project Context
@@ -110,7 +120,7 @@ I conducted experiments with LeNet-300-100 applied to MNIST and VGG-16 applied t
   python3 train.py meta.model=VGG meta.dataset=CIFAR meta.prefix=Bayesian
   ```
 
-All hyperparameters are set in the config files located in the `./config/` directory.
+All hyperparameters are set in the config files located in the `./config/` directory. In order to run the code, you need python==3.10 and packages specified in the requirements.txt.
 
 ### Results
 

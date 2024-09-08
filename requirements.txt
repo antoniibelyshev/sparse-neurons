@@ -1,0 +1,6 @@
+hydra-core==1.3
+omegaconf==2.3
+torch==2.1.1+cu121
+numpy==1.26
+torchvision==0.16.1+cu121
+wandb==0.17
