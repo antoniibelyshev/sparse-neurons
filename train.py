@@ -10,10 +10,17 @@ from omegaconf import DictConfig
 import utils
 
 
-# torch.autograd.set_detect_anomaly(True)
-
-
 def train_model(cfg: DictConfig, prefix: str | None = None) -> utils.Trainer:
+    """
+    Trains and saves a model based on the provided configuration.
+
+    Args:
+        cfg (DictConfig): Configuration object containing model, optimizer, scheduler, and training parameters.
+        prefix (str | None, optional): Prefix to specify model type ('', 'Bayesian', 'Squeezed'). Default is None.
+
+    Returns:
+        utils.Trainer: The Trainer instance used for training the model.
+    """
     model_name = cfg.meta.model
     prefix = cfg.meta.prefix if prefix is None else prefix
     print(f"Training {prefix}{model_name}...")
@@ -26,12 +33,12 @@ def train_model(cfg: DictConfig, prefix: str | None = None) -> utils.Trainer:
         model: nn.Module = getattr(utils, "Bayesian" + model_name)(**model_kwargs)
         if hasattr(model, "from_pretrained"):
             pretrained_model: nn.Module = getattr(utils, model_name)(**model_kwargs)
-            pretrained_model.load_state_dict(torch.load(os.path.join(os.getcwd(), "models", f"{model_name}.pth"))) # type: ignore
+            pretrained_model.load_state_dict(torch.load(os.path.join(os.getcwd(), "models", f"{model_name}.pth")))  # type: ignore
             model.from_pretrained(pretrained_model)
 
     elif prefix == "Squeezed":
         bayesian_model = getattr(utils, "Bayesian" + model_name)(**model_kwargs)
-        bayesian_model.load_state_dict(torch.load(os.path.join(os.getcwd(), "models", f"Bayesian{model_name}.pth"))) # type: ignore
+        bayesian_model.load_state_dict(torch.load(os.path.join(os.getcwd(), "models", f"Bayesian{model_name}.pth")))  # type: ignore
 
         model_kwargs = model_kwargs.copy()
         model_kwargs.cfg = bayesian_model.squeezed_cfg()
@@ -42,7 +49,6 @@ def train_model(cfg: DictConfig, prefix: str | None = None) -> utils.Trainer:
         raise AssertionError(f"Unsupported prefix: {prefix}")
     
     model_name_ = (prefix if prefix == "Bayesian" else "") + model_name
-
 
     optim_class = cfg.optim[model_name_].optim_class
     optim_kwargs = cfg.optim[model_name_].optim_kwargs
@@ -57,10 +63,6 @@ def train_model(cfg: DictConfig, prefix: str | None = None) -> utils.Trainer:
     if model_name_ == "BayesianVGG":
         def reg_coef_lambda(epoch: int) -> float:
             return min(1., 0.1 ** (2 - epoch // 100 / 2))
-            # return min(0.3 ** (4 - epoch // 100), 1.)
-            # return min(0.1 ** (2 - epoch // 200), 1.)
-            # return min(1., 0.1 ** (2 - epoch // 200))
-            # return min(1., 0.5 ** (8 - epoch // 50))
     elif model_name_ == "BayesianLeNet":
         def reg_coef_lambda(epoch: int) -> float:
             if epoch < 10:
@@ -69,8 +71,6 @@ def train_model(cfg: DictConfig, prefix: str | None = None) -> utils.Trainer:
                 return 2 ** ((epoch - 10) / 50) - 1
             else:
                 return 1.
-        # def reg_coef_lambda(epoch: int) -> float:
-        #     return min(1., epoch / 50)
     else:
         def reg_coef_lambda(epoch: int) -> float:
             return 1.
@@ -90,16 +90,26 @@ def train_model(cfg: DictConfig, prefix: str | None = None) -> utils.Trainer:
     for key, value in test_metrics.items():
         print(key + ":", value)
 
-    torch.save(model.state_dict(), os.path.join(os.getcwd(), "models", prefix + model_name + "1.pth")) # type: ignore
+    if prefix == "Bayesian":
+        print("Squeezed config:")
+        print(model.squeezed_cfg())
+
+    torch.save(model.state_dict(), os.path.join(os.getcwd(), "models", prefix + model_name + ".pth"))  # type: ignore
 
     return trainer
 
 
 @hydra.main(config_path="configs", config_name="config", version_base=None)
 def main(cfg: DictConfig) -> None:
+    """
+    Main function for training models based on the provided Hydra configuration.
+
+    Args:
+        cfg (DictConfig): Configuration object containing meta information and model specifications.
+    """
     if cfg.meta.prefix == "All":
-        for prefix in ["", "Bayesian", "Squeezed"]:
-            train_model(cfg, prefix=prefix)
+        for prefix in ["", "Bayesian"]:
+            train_model(cfg, prefix)
 
     else:
         train_model(cfg)

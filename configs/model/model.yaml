@@ -2,7 +2,7 @@
     LeNet: {
         in_features: 784,
         num_classes: 10,
-        cfg: [500, 300],
+        cfg: [300, 100],
         bias: true
     },
     VGG: {

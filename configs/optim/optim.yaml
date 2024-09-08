@@ -37,11 +37,11 @@
     BayesianVGG: {
         optim_class: Adam,
         optim_kwargs: {
-            lr: 0.001
+            lr: 0.004
         },
         scheduler_class: StepLR,
         scheduler_kwargs: {
-            step_size: 50,
+            step_size: 40,
             gamma: 0.5
         }
     }

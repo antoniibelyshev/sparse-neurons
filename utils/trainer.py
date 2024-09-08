@@ -10,6 +10,21 @@ import wandb
 
 
 class Trainer:
+    """
+    A class for training and testing neural network models.
+
+    Args:
+        model (nn.Module): The model to be trained and evaluated.
+        train_loader (DataLoader[tuple[Tensor, Tensor]]): DataLoader for training data.
+        test_loader (DataLoader[tuple[Tensor, Tensor]]): DataLoader for testing data.
+        optimizer (Optimizer): Optimizer for updating model parameters.
+        scheduler (LRScheduler): Learning rate scheduler.
+        criterion (Callable[[Tensor, Tensor], Tensor], optional): Loss function. Default is nn.CrossEntropyLoss().
+        epochs (int, optional): Number of training epochs. Default is 100.
+        device (torch.device, optional): Device to run the model on. Default is CUDA if available, else CPU.
+        reg_coef_lambda (Callable[[int], float], optional): Regularization coefficient as a function of epoch. Default is lambda _: 1.0.
+    """
+
     def __init__(
             self,
             model: nn.Module,
@@ -26,9 +41,9 @@ class Trainer:
         self.model = model.to(device)
         self.device = device
         self.train_loader = train_loader
-        self.n_train = len(train_loader.dataset) # type: ignore
+        self.n_train = len(train_loader.dataset)
         self.test_loader = test_loader
-        self.n_test = len(test_loader.dataset) # type: ignore
+        self.n_test = len(test_loader.dataset)
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.criterion = criterion
@@ -36,10 +51,26 @@ class Trainer:
         self.reg_coef_lambda = reg_coef_lambda
 
     def loss(self, output: Tensor, target: Tensor) -> Tensor:
+        """
+        Computes the loss for given outputs and targets.
+
+        Args:
+            output (Tensor): Model predictions.
+            target (Tensor): Ground truth labels.
+
+        Returns:
+            Tensor: Computed loss.
+        """
         return self.criterion(output, target)
 
     def log(self, **metrics: float) -> None:
-        wandb.log(metrics) # type: ignore
+        """
+        Logs metrics to WandB.
+
+        Args:
+            **metrics (float): Metrics to log.
+        """
+        wandb.log(metrics)  # type: ignore
 
     def train(
             self,
@@ -47,7 +78,15 @@ class Trainer:
             project: str = "neuron sparsity",
             name: str = "default experiment",
     ) -> None:
-        run = wandb.init(name=name, project=project, entity=entity) # type: ignore
+        """
+        Trains the model and logs metrics to WandB.
+
+        Args:
+            entity (str, optional): WandB entity name. Default is "antonii-belyshev".
+            project (str, optional): WandB project name. Default is "neuron sparsity".
+            name (str, optional): WandB run name. Default is "default experiment".
+        """
+        run = wandb.init(name=name, project=project, entity=entity)  # type: ignore
 
         for epoch in range(self.epochs):
             self.model.train()
@@ -63,25 +102,32 @@ class Trainer:
                     total_loss.backward()
                     self.log(loss=loss.item(), reg=reg.item())
                 else:
-                    loss.backward() # type: ignore
+                    loss.backward()  # type: ignore
                     self.log(loss=loss.item())
                 self.optimizer.step()
-    
-            
-            self.log(**self.test(epoch))
 
+            self.log(**self.test(epoch))
             self.scheduler.step()
 
-        run.finish() # type: ignore
+        run.finish()  # type: ignore
 
     def test(self, epoch: int | None = None) -> dict[str, float]:
+        """
+        Evaluates the model on the test dataset.
+
+        Args:
+            epoch (int | None, optional): Current epoch number. Default is None.
+
+        Returns:
+            dict[str, float]: Dictionary of evaluation metrics including loss and accuracy.
+        """
         metrics: dict[str, float] = {}
 
         self.model.eval()
 
         loss = 0.0
         correct = 0.0
-        
+
         with torch.no_grad():
             for data, target in self.test_loader:
                 data, target = data.to(self.device), target.to(self.device)
@@ -92,7 +138,7 @@ class Trainer:
 
             metrics["eval_loss"] = loss / len(self.test_loader)
             metrics["accuracy"] = 100. * correct / self.n_test
-        
+
         if epoch is not None:
             metrics["epoch"] = epoch
 
@@ -100,7 +146,23 @@ class Trainer:
 
 
 class BayesianModelTrainer(Trainer):
+    """
+    Trainer for Bayesian models with additional sparsity metrics.
+
+    Args:
+        See Trainer for arguments.
+    """
+
     def test(self, epoch: int | None = None) -> dict[str, float]:
+        """
+        Evaluates the Bayesian model on the test dataset and computes sparsity metrics.
+
+        Args:
+            epoch (int | None, optional): Current epoch number. Default is None.
+
+        Returns:
+            dict[str, float]: Dictionary of evaluation metrics including loss, accuracy, and neuron sparsity.
+        """
         metrics = super().test(epoch)
 
         self.model.eval()

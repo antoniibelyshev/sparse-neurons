@@ -27,7 +27,19 @@ class BayesianLinear(nn.Module):
         linear_transform_type: str,
         **linear_transform_kwargs: Any
     ):
-        super(BayesianLinear, self).__init__()  # type: ignore
+        """
+        Initializes BayesianLinear layer.
+
+        Args:
+            in_features (int): Number of input features.
+            out_features (int): Number of output features.
+            conv_dims (tuple[int, ...] | None): Convolutional dimensions.
+            bias (bool): Whether to include bias. Default is True.
+            threshold (float): Dropout rate threshold. Default is 0.99.
+            linear_transform_type (str): Type of linear transformation function.
+            **linear_transform_kwargs (Any): Additional arguments for the linear transformation.
+        """
+        super(BayesianLinear, self).__init__()
 
         self.in_features = in_features
         self.out_features = out_features
@@ -47,6 +59,9 @@ class BayesianLinear(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
+        """
+        Resets parameters to initial values.
+        """
         nn.init.kaiming_normal_(self.weight)
 
         with torch.no_grad():
@@ -56,6 +71,15 @@ class BayesianLinear(nn.Module):
             nn.init.constant_(self.bias, 0)
 
     def forward(self, x: Tensor) -> Tensor:
+        """
+        Forward pass through the layer.
+
+        Args:
+            x (Tensor): Input tensor.
+
+        Returns:
+            Tensor: Output tensor.
+        """
         if self.training:
             mu = self.linear_transform(x, self.weight, self.bias)
             sigma = safe_sqrt(self.linear_transform(x.pow(2), self.weight_std.pow(2)))
@@ -63,6 +87,12 @@ class BayesianLinear(nn.Module):
         return self.linear_transform(x, self.eval_weight, self.bias)
 
     def kl(self) -> Tensor:
+        """
+        Computes the KL divergence regularization term.
+
+        Returns:
+            Tensor: KL divergence.
+        """
         x = safe_sqrt(self.weight.pow(2) + self.weight_std.pow(2))
 
         dims = list(range(1, x.dim()))
@@ -71,6 +101,8 @@ class BayesianLinear(nn.Module):
 
         pi = e_step(x, self.sigma1.detach(), self.sigma2.detach(), self.p.detach())
         self.sigma1, self.sigma2, self.p = m_step(x, pi, dims)
+
+        x = self.weight + torch.randn_like(self.weight_std) * self.weight_std
 
         log_p1 = safe_log(self.p) - safe_log(self.sigma1) - 0.5 * safe_div(x, self.sigma1).pow(2)
         log_p2 = safe_log(1 - self.p) - safe_log(self.sigma2) - 0.5 * safe_div(x, self.sigma2).pow(2)
@@ -87,22 +119,61 @@ class BayesianLinear(nn.Module):
 
     @property
     def device(self) -> torch.device:
+        """
+        Returns the device of the weight tensor.
+
+        Returns:
+            torch.device: Device of the weight tensor.
+        """
         return self.weight.device
 
     @property
     def equivalent_dropout_rate(self) -> Tensor:
+        """
+        Computes the equivalent dropout rate.
+
+        Returns:
+            Tensor: Equivalent dropout rate.
+        """
         alpha = self.weight.pow(2) / self.weight_std.pow(2)
         return 1 / (alpha + 1)
 
     def get_weight_mask(self, threshold: float | None = None) -> Tensor:
+        """
+        Computes a mask based on the dropout rate.
+
+        Args:
+            threshold (float | None): Dropout rate threshold. Uses class threshold if None.
+
+        Returns:
+            Tensor: Weight mask.
+        """
         return self.equivalent_dropout_rate < (threshold or self.threshold)
     
     def get_in_mask(self) -> Tensor:
+        """
+        Computes the input mask.
+
+        Returns:
+            Tensor: Input mask.
+        """
         return self.get_weight_mask().sum([0, *range(2, self.weight.dim())]) > 0
     
     def get_out_mask(self) -> Tensor:
+        """
+        Computes the output mask.
+
+        Returns:
+            Tensor: Output mask.
+        """
         return self.get_weight_mask().sum(list(range(1, self.weight.dim()))) > 0
 
     @property
     def eval_weight(self) -> Tensor:
+        """
+        Returns the weight tensor used for evaluation.
+
+        Returns:
+            Tensor: Evaluation weight tensor.
+        """
         return torch.where(self.get_weight_mask(), self.weight, torch.zeros(1, device=self.device))
