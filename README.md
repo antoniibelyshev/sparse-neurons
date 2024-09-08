@@ -44,7 +44,7 @@ This technique encourages many weights to become small and eventually zero, allo
 #### Posterior Distribution
 I follow the standard approach of approximating the posterior distribution of weights $q(W)$ with Gaussian distributions. The mean $\mu_{ij}$ and variance $s_{ij}^2$ of the weights are learned during training:
 
-$$q(W) = \prod_{ij}\mathcal{N}(w_{ij}|\mu_{ij}, s_{ij}^2)$$
+$$q(W) = \prod\limits_{ij}\mathcal{N}(w_{ij}|\mu_{ij}, s_{ij}^2)$$
 
 #### Prior Distribution
 While the traditional variational dropout uses a prior distribution that focuses on sparsifying individual weights, my goal is to extend this to neuron sparsification. To do this, I modify the prior distribution. Instead of assigning a different scale for each weight, I use the same scale for all weights associated with a given output neuron:
