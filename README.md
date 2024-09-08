@@ -35,7 +35,7 @@ The aim of this project is to extend the variational dropout technique to not on
 ### Prior Work: Variational Dropout
 The method for sparsifying weights in neural networks is based on the Variational Dropout technique. In this approach, the prior distribution of weights $p(W)$ is set to be a centered Gaussian distribution. The goal is to optimize approximation of posterior distribution to match the true posterior by maximizing the Evidence Lower Bound (ELBO):
 
-$$\mathcal{L}(q, \theta) = \mathbb{E}_q \log (Y|W; X) - KL(q||p)$$
+$$\mathcal{L}(q, \theta) = \mathbb{E}_q \log (Y|W, X) - KL(q||p)$$
 
 This technique encourages many weights to become small and eventually zero, allowing for efficient weight sparsification.
 
@@ -44,19 +44,19 @@ This technique encourages many weights to become small and eventually zero, allo
 #### Posterior Distribution
 I follow the standard approach of approximating the posterior distribution of weights $q(W)$ with Gaussian distributions. The mean $\mu_{ij}$ and variance $s_{ij}^2$ of the weights are learned during training:
 
-$$q(W) = \prod\limits_{ij}\mathcal{N}(w_{ij}|\mu_{ij}, s_{ij}^2)$$
+$$q(W) = \prod\limits_{ij}\mathcal{N}(W_{ij}|\mu_{ij}, s_{ij}^2)$$
 
 #### Prior Distribution
 While the traditional variational dropout uses a prior distribution that focuses on sparsifying individual weights, my goal is to extend this to neuron sparsification. To do this, I modify the prior distribution. Instead of assigning a different scale for each weight, I use the same scale for all weights associated with a given output neuron:
 
-$$p(W|\sigma) = \prod_{ij}\mathcal{N}(w_{ij}|0, \sigma_i^2)$$
+$$p(W|\sigma) = \prod_{ij}\mathcal{N}(W_{ij}|0, \sigma_i^2)$$
 
 This forces all weights connected to a neuron to either remain relevant (non-zero) or become irrelevant (close to zero), thus leading to neuron sparsification.
 
 #### Mixture of Gaussians
 Since this approach can be overly restrictive, I extend the prior distribution to a mixture of two Gaussians:
 
-$$p(W|\theta) = \prod_{ij}\left( p_i\mathcal{N}(w_{ij}|0, {\sigma_1}_i^2) + (1 - p_i)\mathcal{N}(w_{ij}|0, {\sigma_2}_i^2) \right)$$
+$$p(W|\theta) = \prod_{ij}\left( p_i\mathcal{N}(W_{ij}|0, {\sigma_1}_i^2) + (1 - p_i)\mathcal{N}(w_{ij}|0, {\sigma_2}_i^2) \right)$$
 
 This allows neurons to have a mixture of large and small weights, better capturing the behavior of different layers and improving model accuracy while encouraging neuron sparsification.
 
@@ -74,7 +74,7 @@ $$\mathbb{E}_q \log p(W|\theta) \ge \log p(\tilde W|\theta)$$
 
 where $\tilde W_{ij} = \sqrt{\mu_{ij}^2 + s_{ij}^2}$. Combining all parts of the $KL$ term, we get:
 
-$$KL(q||p) = \mathbb{E}_q \log q - \mathbb{E}_q \log p \le -\frac{1}{2}\sum_{ij} \log(2\pi es_{ij}^2) - \log p(A|\theta)$$
+$$KL(q||p) = \mathbb{E}_q \log q - \mathbb{E}_q \log p \le -\frac{1}{2}\sum_{ij} \log(2\pi es_{ij}^2) - \log p(\tilde W|\theta)$$
 
 While this expression is an approximation, it is easy to compute and minimizing it will also minimize $KL$.
 
