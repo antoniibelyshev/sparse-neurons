@@ -1,7 +1,6 @@
 import torch
 from torch import Tensor
 
-import numpy as np
 import math
 
 from .utils import safe_sqrt, safe_log, safe_div
@@ -42,13 +41,13 @@ def m_step(x: Tensor, pi: Tensor, dims: list[int]) -> tuple[Tensor, Tensor, Tens
     Returns:
         tuple[Tensor, Tensor, Tensor]: Updated parameters (sigma1, sigma2, p).
     """
-    n1 = pi.sum(dims, keepdims=True)
-    n2 = math.prod(pi.shape[i] for i in dims) - n1
-    sigma1 = safe_sqrt(safe_div((pi * x.pow(2)).sum(dims, keepdims=True), n1))
-    sigma2 = safe_sqrt(safe_div(((1 - pi) * x.pow(2)).sum(dims, keepdims=True), n2))
-    p = pi.mean(dims, keepdims=True)
+    n1 = pi.sum(dims, keepdims=True)  # type: ignore
+    n2 = math.prod(pi.shape[i] for i in dims) - n1  # type: ignore
+    sigma1 = safe_sqrt(safe_div((pi * x.pow(2)).sum(dims, keepdims=True), n1))  # type: ignore
+    sigma2 = safe_sqrt(safe_div(((1 - pi) * x.pow(2)).sum(dims, keepdims=True), n2))  # type: ignore
+    p = pi.mean(dims, keepdims=True)  # type: ignore
 
-    return sigma1, sigma2, p
+    return sigma1, sigma2, p  # type: ignore
 
 
 def em_gaussian_mixture(x: Tensor, dims: list[int], n_iter: int = 1000) -> tuple[Tensor, Tensor, Tensor, Tensor]:
@@ -63,9 +62,10 @@ def em_gaussian_mixture(x: Tensor, dims: list[int], n_iter: int = 1000) -> tuple
     Returns:
         tuple[Tensor, Tensor, Tensor, Tensor]: Updated mixture probabilities, sigma1, sigma2, and p.
     """
-    sigma = safe_sqrt(x.pow(2).mean(dims, keepdims=True))
+    sigma = safe_sqrt(x.pow(2).mean(dims, keepdims=True))  # type: ignore
     sigma1, sigma2 = sigma / 2, sigma * 2
     p = torch.zeros_like(x) + 0.5
+    pi = pi = e_step(x, sigma1, sigma2, p)
 
     for _ in range(n_iter):
         pi = e_step(x, sigma1, sigma2, p)

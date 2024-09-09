@@ -15,7 +15,7 @@ class LeNet(nn.Module):
         bias (bool): Whether to use bias in layers. Default is True.
     """
     def __init__(self, in_features: int = 784, num_classes: int = 10, cfg: list[int] = [300, 100], bias: bool = True):
-        super(LeNet, self).__init__()
+        super(LeNet, self).__init__()  # type: ignore
 
         self.layers = nn.ModuleList()
 
@@ -53,7 +53,7 @@ class BayesianLeNet(nn.Module):
         threshold (float): Dropout threshold for Bayesian layers. Default is 0.99.
     """
     def __init__(self, in_features: int = 784, num_classes: int = 10, cfg: list[int] = [500, 300], bias: bool = True, threshold: float = 0.99):
-        super(BayesianLeNet, self).__init__()
+        super(BayesianLeNet, self).__init__()  # type: ignore
 
         self.in_features = in_features
         self.num_classes = num_classes

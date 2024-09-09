@@ -41,9 +41,9 @@ class Trainer:
         self.model = model.to(device)
         self.device = device
         self.train_loader = train_loader
-        self.n_train = len(train_loader.dataset)
+        self.n_train = len(train_loader.dataset)  # type: ignore
         self.test_loader = test_loader
-        self.n_test = len(test_loader.dataset)
+        self.n_test = len(test_loader.dataset)  # type: ignore
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.criterion = criterion

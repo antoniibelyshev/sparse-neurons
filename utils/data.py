@@ -84,8 +84,8 @@ class Normalization:
             imgs (Tensor): Input image tensor.
         """
         uv_channels = imgs[:, 1:]
-        self.m = uv_channels.mean(dim=(0, 2, 3), keepdims=True)
-        self.s = uv_channels.std(dim=(0, 2, 3), keepdims=True)
+        self.m = uv_channels.mean(dim=(0, 2, 3), keepdims=True)  # type: ignore
+        self.s = uv_channels.std(dim=(0, 2, 3), keepdims=True)  # type: ignore
 
     def transform(self, imgs: Tensor) -> Tensor:
         """
@@ -102,7 +102,7 @@ class Normalization:
         
         y_blurred = torch.nn.functional.conv2d(y_channel, self.gaussian_kernel, padding=self.kernel_size // 2)
         y_normalized = y_channel - y_blurred
-        y_normalized /= y_normalized.std((2, 3), keepdims=True) + 1e-5
+        y_normalized /= y_normalized.std((2, 3), keepdims=True) + 1e-5  # type: ignore
         
         uv_normalized = (uv_channels - self.m) / self.s
 
@@ -174,7 +174,7 @@ def get_mnist_dataloaders(
     train_loader: DataLoader[tuple[Tensor, ...]] = DataLoader(train_dataset, batch_size=batch_size_train, shuffle=True, **train_kwargs)
     test_loader: DataLoader[tuple[Tensor, ...]] = DataLoader(test_dataset, batch_size=batch_size_test, shuffle=False)
 
-    return train_loader, test_loader
+    return train_loader, test_loader  # type: ignore
 
 
 def get_cifar_dataloaders(
@@ -208,7 +208,7 @@ def get_cifar_dataloaders(
     train_loader: DataLoader[tuple[Tensor, ...]] = DataLoader(train_dataset, batch_size=batch_size_train, shuffle=True, **train_kwargs)
     test_loader: DataLoader[tuple[Tensor, ...]] = DataLoader(test_dataset, batch_size=batch_size_test, shuffle=False)
 
-    return train_loader, test_loader
+    return train_loader, test_loader  # type: ignore
 
 
 def get_dataloaders(name: str, **kwargs: Any) -> tuple[DataLoader[tuple[Tensor, Tensor]], DataLoader[tuple[Tensor, Tensor]]]:

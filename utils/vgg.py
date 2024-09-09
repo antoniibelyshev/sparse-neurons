@@ -34,7 +34,7 @@ class VGG(nn.Module):
                  conv_kernel_size: int = 3, conv_padding: int = 1, conv_stride: int = 1,
                  max_pool_kernel_size: int = 2, max_pool_stride: int = 2, max_pool_padding: int = 0, 
                  bias: bool = True) -> None:
-        super(VGG, self).__init__()
+        super(VGG, self).__init__()  # type: ignore
 
         self.features_layers = nn.ModuleList()
 
@@ -122,7 +122,7 @@ class BayesianVGG(nn.Module):
                  conv_kernel_size: int = 3, conv_padding: int = 1, conv_stride: int = 1,
                  max_pool_kernel_size: int = 2, max_pool_stride: int = 2, max_pool_padding: int = 0,
                  bias: bool = True, threshold: float = 0.99) -> None:
-        super(BayesianVGG, self).__init__()
+        super(BayesianVGG, self).__init__()  # type: ignore
 
         self.in_channels = in_channels
         self.num_classes = num_classes

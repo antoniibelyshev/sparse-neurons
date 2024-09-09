@@ -5,8 +5,6 @@ from torch.nn.parameter import Parameter
 from typing import Any
 from functools import partial
 
-import numpy as np
-
 from .utils import safe_sqrt, safe_log, safe_div
 from .gaussian_mixture import em_gaussian_mixture, e_step, m_step
 
@@ -39,7 +37,7 @@ class BayesianLinear(nn.Module):
             linear_transform_type (str): Type of linear transformation function.
             **linear_transform_kwargs (Any): Additional arguments for the linear transformation.
         """
-        super(BayesianLinear, self).__init__()
+        super(BayesianLinear, self).__init__()  # type: ignore
 
         self.in_features = in_features
         self.out_features = out_features
@@ -96,7 +94,7 @@ class BayesianLinear(nn.Module):
         x = safe_sqrt(self.weight.pow(2) + self.weight_std.pow(2))
 
         dims = list(range(1, x.dim()))
-        if self.sigma1 is None:
+        if self.sigma1 is None or self.sigma2 is None or self.p is None:
             _, self.sigma1, self.sigma2, self.p = em_gaussian_mixture(x.detach(), dims, n_iter=10)
 
         pi = e_step(x, self.sigma1.detach(), self.sigma2.detach(), self.p.detach())
