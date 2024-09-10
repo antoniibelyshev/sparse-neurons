@@ -1,0 +1,105 @@
+\documentclass{article}
+
+\usepackage{amssymb, amsmath}
+
+\newcommand{\N}{\mathcal{N}}
+\newcommand{\E}{\mathbb{E}}
+\renewcommand{\L}{\mathcal{L}}
+
+\begin{document}
+
+\title{Theory and Method for Neuron Sparsification using Variational Dropout}
+\author{}
+\date{}
+\maketitle
+
+\section{Method}
+
+\subsection{Prior Work: Variational Dropout}
+Variational Dropout is a technique for sparsifying the weights of neural networks by introducing a centered Gaussian prior for the weights $p(W)$. The goal is to approximate the posterior distribution $q(W)$ using a variational distribution, which is parameterized and optimized by maximizing the Evidence Lower Bound (ELBO):
+
+\begin{equation}
+    \L(q, \theta) = \E_q \log p(Y | W, X) - KL(q || p)
+\end{equation}
+
+This method encourages many weights to shrink towards zero, allowing for weight sparsification.
+
+\subsection{Extending to Neuron Sparsification}
+While Variational Dropout successfully sparsifies weights, it doesn't directly reduce the number of neurons. To extend this technique, I modify the prior distribution to encourage neuron-level sparsification. Instead of assigning a different scale to each weight, I apply the same scale to all weights connected to a given output neuron.
+
+\begin{equation}
+    p(W|\sigma) = \prod_{ij} \N(W_{ij}|0, \sigma_i^2)
+\end{equation}
+
+This formulation encourages entire neurons to either remain active (non-zero weights) or become inactive (weights close to zero).
+
+\subsection{Mixture of Gaussian Prior}
+To improve flexibility, the prior distribution is extended to a mixture of two Gaussian:
+
+\begin{equation}
+    p(W|\theta) = \prod_{ij} \left( p_i \N(W_{ij}|0, {\sigma_1}_i^2) + (1 - p_i)\N(W_{ij}|0, {\sigma_2}_i^2) \right)
+\end{equation}
+
+This allows for a more nuanced control over the weights connected to a neuron, enabling a combination of large and small weights while still promoting neuron sparsification.
+
+\subsection{Optimization Procedure}
+The optimization goal is to maximize the ELBO with respect to both the variational distribution $q$ and the prior parameters $\theta$. The ELBO consists of two terms: the expected log-likelihood and the KL divergence between the variational posterior and the prior.
+
+For optimizing with respect to $\theta$, the relevant term is:
+
+\begin{equation}
+    -KL(q || p) = - \E_q \log \frac{q(W)}{p(W|\theta)} = \E_q \log p(W|\theta) + const
+\end{equation}
+
+Thus, we need to maximize $\E_q \log p(W|\theta)$ with respect to $\theta$. As derived in the next section, the parameters $\sigma_1$, $\sigma_2$, and $p_i$ can be estimated using an Expectation-Maximization (EM) algorithm for Gaussian mixtures, treating the observed weights as $\tilde{W}_{ij} = \sqrt{\mu_{ij}^2 + s_{ij}^2}$. After updating $\theta$, the ELBO can be optimized with respect to $q$.
+
+\subsection{Neuron Sparsification Criterion}
+Neuron sparsification is achieved when the dropout rate of all weights connected to a neuron is high. A weight is considered irrelevant if its dropout rate exceeds 0.99. Consequently, a neuron is irrelevant if all its connected weights are irrelevant.
+
+This approach is applied to fully connected and convolutional layers. The same methodology can be generalized to other types of layers such as Multi-Head Attention.
+
+\section{KL Minimization for Neuron Sparsification}
+
+To optimize the objective w.r.t. the parameters $\theta = (\sigma_1, \sigma_2, p)$, we need to maximize the $KL$-term:
+
+\begin{equation}
+    -KL(p||q) = \E_q \log q(W) - \E_q \log p(W|\theta) = \E_q \log p(W|\theta) + const
+\end{equation}
+
+Therefore, we solve the optimization problem:
+
+\begin{equation}
+    \E_q \log p(W|\theta) \to \max_{\theta}
+\end{equation}
+
+\subsection{Latent Variable Introduction}
+
+We introduce latent variables $z_{ij}$, indicating the assignment of each weight $W_{ij}$ to one of the Gaussian components. This results in:
+
+\begin{equation}
+    p(W, z | \theta) = \prod_{ij} \left(p_i\N(W_{ij}|0, \sigma_1^2)\right)^{z_{ij}}\left((1 - p_i)\N(W_{ij}|0, \sigma_2^2)\right)^{1 - z_{ij}}
+\end{equation}
+
+We derive a lower bound for the objective function by incorporating a variational distribution $r(z)$:
+
+\begin{multline}
+    \E_q \log p(W|\theta) =
+    \E_q \E_r \left( \log p(W, z|\theta) - \log r(z) \right) + \E_q KL(r(z) \| p(z|W, \theta)) \ge\\
+    \E_r \left( \E_q \log p(W, z|\theta) - \log r(z) \right) =
+    \E_r \left( \log p(\tilde W, z|\theta) - \log r(z) \right) = \L_{GM}(\theta, r)
+\end{multline}
+where $\tilde{W}_{ij} = \sqrt{\mu_{ij}^2 + s_{ij}^2}$. Now we can note that it is the same lower bound as for the Gaussian Mixture model where observed data is $\tilde W$.
+
+\subsection{Gaussian Mixture Model Optimization}
+
+To solve this optimization problem, we apply the Expectation-Maximization (EM) algorithm, which is commonly used for Gaussian mixture models. After each EM step, the lower bound $\L_{GM}(\theta, r)$ will converge to the log-likelihood $\log p(\tilde{W}|\theta)$:
+
+\begin{equation}
+    p(\tilde{W}|\theta) = \prod_{ij} \left( p_i \N(\tilde{W}_{ij}|0, \sigma_1^2) + (1 - p_i)\N(\tilde{W}_{ij}|0, \sigma_2^2)\right)
+\end{equation}
+
+\subsection{Conclusion}
+
+In the optimization step, the resulting lower bound $p(\tilde{W}|\theta)$ is used to replace the original expectation $\E_q \log p(W|\theta)$. This allows us to effectively optimize the variational dropout framework for neuron sparsification.
+
+\end{document}
