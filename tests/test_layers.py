@@ -5,6 +5,7 @@ import torch
 from torch import nn
 
 from sparse_neurons.conversion import convert_linear_layers, iter_group_ard_layers
+from sparse_neurons.ema import ParameterEMA
 from sparse_neurons.experiments.evaluate_neuron_importance import neuron_importance
 from sparse_neurons.experiments.train_mnist import kl_weight, make_model
 from sparse_neurons.layers import TwoSidedGroupARDLinear
@@ -130,3 +131,17 @@ def test_bias_has_learned_augmented_input_scale() -> None:
         layer.bias_log_variance.fill_(-8.0)
     layer.update_log_lambda()
     assert layer.log_lambda_in[-1].item() != 0.0
+
+
+def test_parameter_ema_updates_and_copies_parameters() -> None:
+    model = nn.Linear(2, 1, bias=False)
+    with torch.no_grad():
+        model.weight.zero_()
+    ema = ParameterEMA(model, decay=0.5)
+    with torch.no_grad():
+        model.weight.fill_(2.0)
+    ema.update(model)
+    with torch.no_grad():
+        model.weight.fill_(7.0)
+    ema.copy_to(model)
+    assert torch.equal(model.weight, torch.ones_like(model.weight))

@@ -21,6 +21,7 @@ from sparse_neurons.conversion import (
     iter_group_ard_layers,
     update_log_lambdas,
 )
+from sparse_neurons.ema import ParameterEMA
 from sparse_neurons.models import DeterministicLeNet300100
 from sparse_neurons.layers import TwoSidedGroupARDLinear
 
@@ -30,6 +31,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--learning-rate", type=float, default=1e-3)
+    parser.add_argument("--ema-decay", type=float, default=0.999)
     parser.add_argument("--initial-log-variance", type=float, default=-12.0)
     parser.add_argument("--initial-relative-variance", type=float)
     parser.add_argument("--seed", type=int, default=1)
@@ -331,12 +333,13 @@ def main() -> None:
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=args.epochs, eta_min=args.learning_rate / 100
     )
+    ema = ParameterEMA(model, args.ema_decay)
+    ema_model = copy.deepcopy(model)
     number_of_training_examples = len(train_loader.dataset)
     diagnostics = collect_rows(model, epoch=0)
     input_diagnostics = collect_input_scales(model, epoch=0)
     mixture_diagnostics = collect_mixture_diagnostics(model, epoch=0)
     history: list[dict[str, float | int]] = []
-    best_full_kl_accuracy = -1.0
     if args.checkpoint_every is not None:
         checkpoint_dir = args.output_dir / "checkpoints"
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -359,35 +362,29 @@ def main() -> None:
             loss = nll + beta * kl_per_example
             loss.backward()
             optimizer.step()
+            ema.update(model)
             train_nll_sum += nll.item() * images.shape[0]
 
         scheduler.step()
         update_log_lambdas(model)
-        test_nll, test_accuracy = evaluate(model, test_loader, device)
+        ema.copy_to(ema_model)
+        update_log_lambdas(ema_model)
+        test_nll, test_accuracy = evaluate(ema_model, test_loader, device)
         record = {
             "epoch": epoch,
             "train_nll": train_nll_sum / number_of_training_examples,
             "test_nll": test_nll,
             "test_accuracy": test_accuracy,
-            "kl_per_example": (ard_kl_divergence(model) / number_of_training_examples).item(),
+            "kl_per_example": (
+                ard_kl_divergence(ema_model) / number_of_training_examples
+            ).item(),
             "kl_weight": beta,
             "learning_rate": scheduler.get_last_lr()[0],
         }
         history.append(record)
-        if beta == 1.0 and test_accuracy > best_full_kl_accuracy:
-            best_full_kl_accuracy = test_accuracy
-            torch.save(
-                {
-                    "model": model.state_dict(),
-                    "args": vars(args),
-                    "epoch": epoch,
-                    "metrics": record,
-                },
-                args.output_dir / "best_full_kl_model.pt",
-            )
-        diagnostics.extend(collect_rows(model, epoch))
-        input_diagnostics.extend(collect_input_scales(model, epoch))
-        mixture_diagnostics.extend(collect_mixture_diagnostics(model, epoch))
+        diagnostics.extend(collect_rows(ema_model, epoch))
+        input_diagnostics.extend(collect_input_scales(ema_model, epoch))
+        mixture_diagnostics.extend(collect_mixture_diagnostics(ema_model, epoch))
         print(
             f"epoch={epoch:02d} train_nll={record['train_nll']:.4f} "
             f"test_nll={test_nll:.4f} accuracy={100 * test_accuracy:.2f}% "
@@ -398,16 +395,17 @@ def main() -> None:
             epoch % args.checkpoint_every == 0 or epoch == args.epochs
         ):
             torch.save(
-                {"model": model.state_dict(), "args": vars(args), "epoch": epoch},
+                {"model": ema_model.state_dict(), "args": vars(args), "epoch": epoch},
                 args.output_dir / "checkpoints" / f"epoch_{epoch:03d}.pt",
             )
 
     torch.save(
         {
-            "model": model.state_dict(),
+            "model": ema_model.state_dict(),
             "args": vars(args),
             "initial_metrics": initial_metrics,
             "history": history,
+            "epoch": args.epochs,
         },
         args.output_dir / "model.pt",
     )

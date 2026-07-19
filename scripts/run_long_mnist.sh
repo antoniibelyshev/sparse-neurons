@@ -8,19 +8,21 @@ SEED="${SEED:-1}"
 BATCH_SIZE="${BATCH_SIZE:-1024}"
 NUM_WORKERS="${NUM_WORKERS:-4}"
 BASELINE_EPOCHS="${BASELINE_EPOCHS:-100}"
-ARD_EPOCHS="${ARD_EPOCHS:-300}"
-KL_ZERO_EPOCHS="${KL_ZERO_EPOCHS:-30}"
-KL_WARMUP_EPOCHS="${KL_WARMUP_EPOCHS:-200}"
+ARD_EPOCHS="${ARD_EPOCHS:-100}"
+KL_ZERO_EPOCHS="${KL_ZERO_EPOCHS:-10}"
+KL_WARMUP_EPOCHS="${KL_WARMUP_EPOCHS:-60}"
 CHECKPOINT_EVERY="${CHECKPOINT_EVERY:-10}"
 BASELINE_LR="${BASELINE_LR:-0.001}"
 BASELINE_WEIGHT_DECAY="${BASELINE_WEIGHT_DECAY:-0.0001}"
 ARD_LR="${ARD_LR:-0.001}"
+EMA_DECAY="${EMA_DECAY:-0.999}"
 MIXTURE_SPIKE_VARIANCE="${MIXTURE_SPIKE_VARIANCE:-0.0001}"
 
 BASELINE_DIR="${OUTPUT_ROOT}/baseline"
 ARD_DIR="${OUTPUT_ROOT}/ard_learned_spike_variance"
-PRETRAINED_CHECKPOINT="${PRETRAINED_CHECKPOINT:-${BASELINE_DIR}/best_model.pt}"
+PRETRAINED_CHECKPOINT="${PRETRAINED_CHECKPOINT:-${BASELINE_DIR}/final_ema_model.pt}"
 
+rm -rf "${BASELINE_DIR}" "${ARD_DIR}"
 mkdir -p "${OUTPUT_ROOT}" "${OUTPUT_ROOT}/cache/matplotlib"
 export MPLCONFIGDIR="${MPLCONFIGDIR:-${OUTPUT_ROOT}/cache/matplotlib}"
 
@@ -30,6 +32,7 @@ if [[ -z "${PRETRAINED_CHECKPOINT_OVERRIDE:-}" ]]; then
     --batch-size "${BATCH_SIZE}" \
     --learning-rate "${BASELINE_LR}" \
     --weight-decay "${BASELINE_WEIGHT_DECAY}" \
+    --ema-decay "${EMA_DECAY}" \
     --seed "${SEED}" \
     --device "${DEVICE}" \
     --data-dir "${DATA_DIR}" \
@@ -43,6 +46,7 @@ uv run train-mnist-ard \
   --epochs "${ARD_EPOCHS}" \
   --batch-size "${BATCH_SIZE}" \
   --learning-rate "${ARD_LR}" \
+  --ema-decay "${EMA_DECAY}" \
   --initial-log-variance -12 \
   --seed "${SEED}" \
   --device "${DEVICE}" \
@@ -57,10 +61,5 @@ uv run train-mnist-ard \
 
 uv run evaluate-neuron-importance \
   "${ARD_DIR}/model.pt" \
-  --output-dir "${ARD_DIR}/neuron_importance/final" \
-  --device "${DEVICE}"
-
-uv run evaluate-neuron-importance \
-  "${ARD_DIR}/best_full_kl_model.pt" \
-  --output-dir "${ARD_DIR}/neuron_importance/best_full_kl" \
+  --output-dir "${ARD_DIR}/neuron_importance" \
   --device "${DEVICE}"

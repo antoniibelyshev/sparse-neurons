@@ -134,6 +134,23 @@ Gradients update $\mu$ and $\log s^2$ using the reparameterized expected
 negative log likelihood plus the Gaussian-mixture variational KL. The KL
 coefficient is turned on gradually after deterministic pretraining.
 
+## EMA optimization
+
+Both deterministic pretraining and ARD fine-tuning maintain
+
+$$
+\bar\theta_t
+=
+\rho\bar\theta_{t-1}+(1-\rho)\theta_t,
+\qquad \rho=0.999.
+$$
+
+The ARD model is initialized from the final EMA baseline checkpoint. Final
+evaluation and importance diagnostics use EMA parameters; no epoch is selected
+by maximum test accuracy. Since ARD scales and mixture responsibilities have
+analytical updates rather than gradient updates, they are recomputed from
+$\bar\theta_t$ instead of being averaged.
+
 ## Neuron importance
 
 Introduce the constant augmented input $x_0=1$ and represent the bias as

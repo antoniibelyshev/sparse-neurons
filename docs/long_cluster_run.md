@@ -22,8 +22,8 @@ $$
 \beta_t
 =
 \begin{cases}
-0, & t\leq 30,\\
-\min\left(1,\dfrac{t-30}{200}\right), & t>30.
+0, & t\leq 10,\\
+\min\left(1,\dfrac{t-10}{60}\right), & t>10.
 \end{cases}
 $$
 
@@ -39,6 +39,21 @@ $$
 $$
 
 where $\eta_0=10^{-3}$ and $\eta_{\min}=10^{-5}$.
+
+Both phases maintain an exponential moving average of trainable parameters,
+
+$$
+\bar\theta_t
+=
+\rho\bar\theta_{t-1}+(1-\rho)\theta_t,
+\qquad \rho=0.999,
+$$
+
+initialized with $\bar\theta_0=\theta_0$. Evaluation uses $\bar\theta_t$, and
+the final epoch is retained without selecting the maximum test accuracy. For
+ARD, the analytical mixture responsibilities and scale buffers are recomputed
+after copying the EMA parameters. ARD starts from the baseline checkpoint
+`final_ema_model.pt`.
 
 The deterministic baseline minimizes
 
@@ -57,13 +72,14 @@ regularizes its weights.
 The defaults are:
 
 - Baseline: 100 epochs, learning rate $10^{-3}$, L2 coefficient $10^{-4}$.
-- ARD: 300 epochs, initial learning rate $10^{-3}$ with cosine decay.
+- ARD: 100 epochs, initial learning rate $10^{-3}$ with cosine decay.
 - Batch size: 1024 for both phases.
-- KL schedule: 30 epochs off, 200-epoch ramp, 70 epochs at full strength.
+- KL schedule: 10 epochs off, 60-epoch ramp, 30 epochs at full strength.
+- EMA decay: $0.999$ in both phases.
 - Initial low-mode variance: $\xi_k=10^{-4}$, followed by exact M-steps.
 - Architecture: $784$-$300$-$100$-$10$.
 - Checkpoints: every 10 ARD epochs.
-- Selection: retain the highest-accuracy checkpoint after $\beta_t=1$.
+- Selection: use the final EMA checkpoint for both phases.
 - Device selection: CUDA, then MPS, then CPU.
 
 ## Run
@@ -80,9 +96,11 @@ compatible with NVIDIA drivers reporting CUDA 12.4 and avoids accidentally
 resolving a newer CUDA runtime than the cluster driver supports.
 
 The script downloads MNIST when necessary and writes everything beneath
-`artifacts/mnist_long/`, which Git ignores. The selected checkpoint is
-`ard_learned_spike_variance/best_full_kl_model.pt`; importance plots are produced for
-both it and the final model.
+`artifacts/mnist_long/`, which Git ignores. The final ARD checkpoint is
+`ard_learned_spike_variance/model.pt`; its importance plots are generated
+automatically. At startup, the script replaces its `baseline/` and
+`ard_learned_spike_variance/` output directories so obsolete checkpoints from
+an earlier formulation cannot coexist with the new run.
 
 Common cluster overrides:
 
