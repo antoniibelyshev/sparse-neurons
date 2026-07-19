@@ -103,7 +103,9 @@ resolving a newer CUDA runtime than the cluster driver supports.
 The script downloads MNIST when necessary and writes everything beneath
 `artifacts/mnist_long/`, which Git ignores. The final ARD checkpoint is
 `ard_learned_spike_variance/model.pt`; its importance plots are generated
-automatically. At startup, the script replaces its `baseline/` and
+automatically. Evaluation also writes `weight_kl_diagnostics.png` and
+`top_weight_kl_contributors.csv`, containing the exact per-weight mixture-KL
+decomposition. At startup, the script replaces its `baseline/` and
 `ard_learned_spike_variance/` output directories so obsolete checkpoints from
 an earlier formulation cannot coexist with the new run.
 

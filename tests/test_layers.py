@@ -76,6 +76,9 @@ def test_mixture_responsibilities_and_kl_are_valid() -> None:
     assert 0 < layer.spike_probability.item() < 1
     assert torch.isfinite(layer.kl_divergence())
     assert layer.kl_divergence().item() >= 0
+    assert torch.allclose(
+        layer.elementwise_kl_divergence().sum(), layer.kl_divergence()
+    )
 
 
 def test_pretrained_conversion_keeps_final_layer_dense(tmp_path) -> None:

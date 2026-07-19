@@ -147,6 +147,46 @@ Gradients update $\mu$ and $\log s$ using the reparameterized expected
 negative log likelihood plus the Gaussian-mixture variational KL. The KL
 coefficient is turned on gradually after deterministic pretraining.
 
+## Per-weight KL decomposition
+
+Let $u_{ji}=1-r_{ji}$ and define
+
+$$
+G(\mu,s^2;v)
+=
+\frac12\left(
+\frac{\mu^2+s^2}{v}
+-1
++\log\frac{v}{s^2}
+\right),
+$$
+
+the KL from $\mathcal N(\mu,s^2)$ to $\mathcal N(0,v)$. The exact contribution
+used by the variational mixture bound for augmented weight $(j,i)$ is
+
+$$
+\boxed{
+K_{ji}
+=
+r_{ji}G(\mu_{ji},s_{ji}^2;\xi_k)
++u_{ji}G(\mu_{ji},s_{ji}^2;v_{ji})
++r_{ji}\log\frac{r_{ji}}{\pi}
++u_{ji}\log\frac{u_{ji}}{1-\pi}.
+}
+$$
+
+The layer KL is therefore
+
+$$
+\operatorname{KL}_k=\sum_j\sum_{i=0}^{n_{k-1}}K_{ji}.
+$$
+
+Biases are included as the $i=0$ augmented column. Sorting $K_{ji}$ identifies
+which individual parameters dominate regularization. The cumulative curve
+plots the fraction of total KL explained by the largest contributors, while
+the heatmap sorts rows and columns by their marginal KL sums to reveal
+structural concentration.
+
 ## EMA optimization
 
 Both deterministic pretraining and ARD fine-tuning maintain

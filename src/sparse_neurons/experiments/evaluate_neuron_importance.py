@@ -69,6 +69,127 @@ def save_weight_log_snr_histograms(
     plt.close(fig)
 
 
+@torch.no_grad()
+def save_kl_diagnostics(
+    layers: list[TwoSidedGroupARDLinear], output_dir: Path
+) -> None:
+    """Visualize and tabulate the exact augmented-weight KL decomposition."""
+    fig, axes = plt.subplots(
+        len(layers), 3, figsize=(18, 5 * len(layers)), squeeze=False
+    )
+    top_rows: list[dict[str, float | int]] = []
+    for layer_index, (axis_row, layer) in enumerate(
+        zip(axes, layers, strict=True), 1
+    ):
+        kl = layer.elementwise_kl_divergence().detach().cpu()
+        log_kl = kl.clamp_min(1e-12).log10()
+
+        row_order = kl.sum(1).argsort(descending=True)
+        column_order = kl.sum(0).argsort(descending=True)
+        sorted_log_kl = log_kl[row_order][:, column_order]
+        image = axis_row[0].imshow(sorted_log_kl.numpy(), aspect="auto", cmap="magma")
+        axis_row[0].set(
+            xlabel="Input rank by total KL",
+            ylabel="Neuron rank by total KL",
+            title=rf"Layer {layer_index}: sorted $\log_{{10}} K_{{ji}}$",
+        )
+        fig.colorbar(image, ax=axis_row[0], label=r"$\log_{10} K_{ji}$")
+
+        axis_row[1].hist(log_kl.flatten().numpy(), bins=80, alpha=0.85)
+        axis_row[1].set(
+            xlabel=r"$\log_{10} K_{ji}$",
+            ylabel="Augmented weights",
+            title=f"Layer {layer_index}: KL contribution distribution",
+        )
+        axis_row[1].grid(axis="y", alpha=0.2)
+
+        flat_kl = kl.flatten()
+        descending_kl, flat_order = flat_kl.sort(descending=True)
+        fraction_weights = torch.arange(1, flat_kl.numel() + 1) / flat_kl.numel()
+        cumulative_kl = descending_kl.cumsum(0) / descending_kl.sum().clamp_min(1e-30)
+        axis_row[2].plot(fraction_weights.numpy(), cumulative_kl.numpy())
+        axis_row[2].plot([0, 1], [0, 1], linestyle="--", color="gray", alpha=0.6)
+        for target, color in ((0.5, "tab:orange"), (0.9, "tab:red")):
+            count = int(torch.searchsorted(cumulative_kl, target).item()) + 1
+            fraction = count / flat_kl.numel()
+            axis_row[2].axvline(
+                fraction,
+                color=color,
+                linestyle=":",
+                label=f"{100 * target:.0f}% KL from {100 * fraction:.1f}% weights",
+            )
+        axis_row[2].set(
+            xlabel="Fraction of augmented weights (largest first)",
+            ylabel="Fraction of total KL",
+            title=f"Layer {layer_index}: KL concentration",
+            xlim=(0, 1),
+            ylim=(0, 1),
+        )
+        axis_row[2].grid(alpha=0.2)
+        axis_row[2].legend()
+
+        means = layer.augmented_weight_mu().detach().cpu()
+        stds = layer.augmented_weight_log_std().exp().detach().cpu()
+        responsibilities = layer.spike_responsibility.detach().cpu()
+        slab_variance = (
+            -layer.log_lambda_out[:, None] - layer.log_lambda_in[None, :]
+        ).exp().detach().cpu()
+        for rank, flat_index in enumerate(flat_order[: min(200, flat_order.numel())], 1):
+            output_index = int(flat_index // layer.augmented_in_features)
+            input_index = int(flat_index % layer.augmented_in_features)
+            top_rows.append(
+                {
+                    "layer": layer_index,
+                    "rank": rank,
+                    "output": output_index,
+                    "input": input_index,
+                    "is_bias": int(
+                        layer.bias_mu is not None and input_index == layer.in_features
+                    ),
+                    "kl": kl[output_index, input_index].item(),
+                    "mu": means[output_index, input_index].item(),
+                    "std": stds[output_index, input_index].item(),
+                    "spike_responsibility": responsibilities[
+                        output_index, input_index
+                    ].item(),
+                    "slab_variance": slab_variance[output_index, input_index].item(),
+                    "spike_variance": layer.log_spike_variance.exp().item(),
+                }
+            )
+
+    fig.suptitle("Per-weight variational KL diagnostics")
+    fig.tight_layout()
+    fig.savefig(output_dir / "weight_kl_diagnostics.png", dpi=180)
+    plt.close(fig)
+
+    fig, axes = plt.subplots(
+        len(layers), 1, figsize=(14, 4.5 * len(layers)), squeeze=False
+    )
+    for layer_index, axis in enumerate(axes[:, 0], 1):
+        rows = [row for row in top_rows if row["layer"] == layer_index][:40]
+        labels = [
+            f"{row['output']}:" + ("bias" if row["is_bias"] else str(row["input"]))
+            for row in rows
+        ]
+        colors = ["tab:red" if row["is_bias"] else "tab:blue" for row in rows]
+        axis.bar(range(1, len(rows) + 1), [row["kl"] for row in rows], color=colors)
+        axis.set_xticks(range(1, len(rows) + 1), labels, rotation=90)
+        axis.set(
+            xlabel="Augmented weight (output:input)",
+            ylabel=r"$K_{ji}$",
+            title=f"Layer {layer_index}: top 40 per-weight KL contributors",
+        )
+        axis.grid(axis="y", alpha=0.2)
+    fig.tight_layout()
+    fig.savefig(output_dir / "top_weight_kl_contributors.png", dpi=180)
+    plt.close(fig)
+
+    with (output_dir / "top_weight_kl_contributors.csv").open("w", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=list(top_rows[0]))
+        writer.writeheader()
+        writer.writerows(top_rows)
+
+
 def save_importance(model: nn.Module, output_dir: Path) -> None:
     layers = [
         layer
@@ -78,6 +199,7 @@ def save_importance(model: nn.Module, output_dir: Path) -> None:
     if not layers:
         raise ValueError("Checkpoint contains no two-sided group-ARD layers")
     save_weight_log_snr_histograms(layers, output_dir)
+    save_kl_diagnostics(layers, output_dir)
 
     rows: list[dict[str, float | int]] = []
     fig, axes = plt.subplots(len(layers), 1, figsize=(10, 4 * len(layers)), squeeze=False)

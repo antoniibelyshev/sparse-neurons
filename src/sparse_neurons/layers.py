@@ -185,7 +185,8 @@ class TwoSidedGroupARDLinear(nn.Module):
         self.log_spike_variance.copy_(spike_variance.log())
         return 1.0 - self.spike_responsibility
 
-    def kl_divergence(self) -> Tensor:
+    def elementwise_kl_divergence(self) -> Tensor:
+        """Return the variational mixture-KL contribution of each augmented weight."""
         base_precision = (
             self.log_lambda_out[:, None].exp()
             * self.log_lambda_in[None, :].exp()
@@ -210,8 +211,10 @@ class TwoSidedGroupARDLinear(nn.Module):
             + slab_responsibility
             * (slab_responsibility.log() - (1.0 - probability).log())
         )
-        edge_kl = gaussian_kl + categorical_kl
-        return edge_kl.sum()
+        return gaussian_kl + categorical_kl
+
+    def kl_divergence(self) -> Tensor:
+        return self.elementwise_kl_divergence().sum()
 
     def forward(self, input: Tensor, *, sample: bool | None = None) -> Tensor:
         if sample is None:
