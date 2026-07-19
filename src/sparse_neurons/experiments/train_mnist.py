@@ -41,8 +41,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--kl-warmup-epochs", type=int, default=25)
     parser.add_argument("--no-download", action="store_true")
     parser.add_argument("--pretrained-checkpoint", type=Path, required=True)
-    parser.add_argument("--lr-decay-start-epoch", type=int)
-    parser.add_argument("--lr-decay-gamma", type=float, default=1.0)
     parser.add_argument(
         "--mixture-spike-variance",
         type=float,
@@ -330,6 +328,9 @@ def main() -> None:
         flush=True,
     )
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=args.epochs, eta_min=args.learning_rate / 100
+    )
     number_of_training_examples = len(train_loader.dataset)
     diagnostics = collect_rows(model, epoch=0)
     input_diagnostics = collect_input_scales(model, epoch=0)
@@ -360,6 +361,7 @@ def main() -> None:
             optimizer.step()
             train_nll_sum += nll.item() * images.shape[0]
 
+        scheduler.step()
         update_log_lambdas(model)
         test_nll, test_accuracy = evaluate(model, test_loader, device)
         record = {
@@ -369,6 +371,7 @@ def main() -> None:
             "test_accuracy": test_accuracy,
             "kl_per_example": (ard_kl_divergence(model) / number_of_training_examples).item(),
             "kl_weight": beta,
+            "learning_rate": scheduler.get_last_lr()[0],
         }
         history.append(record)
         if beta == 1.0 and test_accuracy > best_full_kl_accuracy:
@@ -391,9 +394,6 @@ def main() -> None:
             f"kl/N={record['kl_per_example']:.4f} beta={beta:.3f}",
             flush=True,
         )
-        if args.lr_decay_start_epoch is not None and epoch >= args.lr_decay_start_epoch:
-            for group in optimizer.param_groups:
-                group["lr"] *= args.lr_decay_gamma
         if args.checkpoint_every is not None and (
             epoch % args.checkpoint_every == 0 or epoch == args.epochs
         ):

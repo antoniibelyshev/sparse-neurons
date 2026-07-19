@@ -27,6 +27,19 @@ $$
 \end{cases}
 $$
 
+Both training phases use cosine learning-rate decay. For a phase of $T$
+epochs,
+
+$$
+\eta_t
+=
+\eta_{\min}
++\frac12(\eta_0-\eta_{\min})
+\left(1+\cos\frac{\pi t}{T}\right),
+$$
+
+where $\eta_0=10^{-3}$ and $\eta_{\min}=10^{-5}$.
+
 The deterministic baseline minimizes
 
 $$
@@ -44,7 +57,7 @@ regularizes its weights.
 The defaults are:
 
 - Baseline: 100 epochs, learning rate $10^{-3}$, L2 coefficient $10^{-4}$.
-- ARD: 300 epochs, learning rate $10^{-4}$.
+- ARD: 300 epochs, initial learning rate $10^{-3}$ with cosine decay.
 - Batch size: 1024 for both phases.
 - KL schedule: 30 epochs off, 200-epoch ramp, 70 epochs at full strength.
 - Initial low-mode variance: $\xi_k=10^{-4}$, followed by exact M-steps.
