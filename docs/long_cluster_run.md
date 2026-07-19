@@ -47,6 +47,10 @@ uv sync
 scripts/run_long_mnist.sh
 ```
 
+On Linux, `uv sync` installs the official PyTorch 2.6 CUDA 12.4 build. This is
+compatible with NVIDIA drivers reporting CUDA 12.4 and avoids accidentally
+resolving a newer CUDA runtime than the cluster driver supports.
+
 The script downloads MNIST when necessary and writes everything beneath
 `artifacts/mnist_long/`, which Git ignores. The selected checkpoint is
 `ard_learned_spike_variance/best_full_kl_model.pt`; importance plots are produced for
