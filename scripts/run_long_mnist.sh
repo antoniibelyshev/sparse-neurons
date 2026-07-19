@@ -13,6 +13,7 @@ KL_ZERO_EPOCHS="${KL_ZERO_EPOCHS:-30}"
 KL_WARMUP_EPOCHS="${KL_WARMUP_EPOCHS:-200}"
 CHECKPOINT_EVERY="${CHECKPOINT_EVERY:-10}"
 BASELINE_LR="${BASELINE_LR:-0.001}"
+BASELINE_WEIGHT_DECAY="${BASELINE_WEIGHT_DECAY:-0.0001}"
 ARD_LR="${ARD_LR:-0.0001}"
 MIXTURE_SPIKE_VARIANCE="${MIXTURE_SPIKE_VARIANCE:-0.0001}"
 
@@ -28,6 +29,7 @@ if [[ -z "${PRETRAINED_CHECKPOINT_OVERRIDE:-}" ]]; then
     --epochs "${BASELINE_EPOCHS}" \
     --batch-size "${BATCH_SIZE}" \
     --learning-rate "${BASELINE_LR}" \
+    --weight-decay "${BASELINE_WEIGHT_DECAY}" \
     --seed "${SEED}" \
     --device "${DEVICE}" \
     --data-dir "${DATA_DIR}" \

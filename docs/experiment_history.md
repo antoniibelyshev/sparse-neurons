@@ -15,6 +15,7 @@ ideas and headline outcomes of deleted experiments.
 | Longer training and learning-rate decay | Extend optimization after the KL ramp. | Did not recover the lost accuracy; about $95.1\%$ best full-KL. |
 | Two-Gaussian scalar mixture | Add narrow spike and broad slab components inside the two-sided scale model. | Improved best full-KL accuracy to $98.00\%$. |
 | Learned matrix-level spike variance | Use one absolute $\xi_k$ per matrix with an exact M-step. | Best full-KL $97.66\%$, final $97.61\%$, KL/example $0.4615$; selected mixture formulation. |
+| L2-regularized baseline | Train the deterministic initializer with coefficient $10^{-4}$. | Improved accuracy from $98.39\%$ to $98.49\%$, test NLL from $0.1016$ to $0.0606$, and reduced $\lVert\theta\rVert_2$ from $29.83$ to $14.92$. |
 | Dense final classifier | Apply grouped ARD only to hidden transforms; keep the $100$-$10$ classifier dense. | Selected result: $98.05\%$ best full-KL, $97.88\%$ final. |
 | Short checkpoint dynamics run | Save every epoch to inspect how importance evolves. | $97.91\%$ best full-KL, $97.67\%$ final; useful diagnostically but inferior to the selected run. |
 | $300$-$300$ architecture | Increase the second hidden width. | Dense baseline reached $98.44\%$, but the ARD experiment was abandoned in favor of $300$-$100$. |
