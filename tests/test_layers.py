@@ -7,6 +7,7 @@ from sparse_neurons.conversion import convert_linear_layers, iter_group_ard_laye
 from sparse_neurons.layers import GroupARDLinear, TwoSidedGroupARDLinear
 from sparse_neurons.models import DeterministicLeNet300100
 from sparse_neurons.experiments.train_mnist import make_model
+from sparse_neurons.experiments.train_mnist import kl_weight
 from argparse import Namespace
 
 
@@ -190,3 +191,10 @@ def test_mixture_parameterizations_are_mutually_exclusive() -> None:
         pass
     else:
         raise AssertionError("expected mutually exclusive mixture parameters")
+
+
+def test_long_run_kl_schedule_reaches_full_strength() -> None:
+    assert kl_weight(30, zero_epochs=30, warmup_epochs=200) == 0.0
+    assert kl_weight(130, zero_epochs=30, warmup_epochs=200) == 0.5
+    assert kl_weight(230, zero_epochs=30, warmup_epochs=200) == 1.0
+    assert kl_weight(300, zero_epochs=30, warmup_epochs=200) == 1.0

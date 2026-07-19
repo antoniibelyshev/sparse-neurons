@@ -351,6 +351,7 @@ def main() -> None:
     input_diagnostics = collect_input_scales(model, epoch=0)
     mixture_diagnostics = collect_mixture_diagnostics(model, epoch=0)
     history: list[dict[str, float | int]] = []
+    best_full_kl_accuracy = -1.0
     if args.checkpoint_every is not None:
         checkpoint_dir = args.output_dir / "checkpoints"
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -386,6 +387,17 @@ def main() -> None:
             "kl_weight": beta,
         }
         history.append(record)
+        if beta == 1.0 and test_accuracy > best_full_kl_accuracy:
+            best_full_kl_accuracy = test_accuracy
+            torch.save(
+                {
+                    "model": model.state_dict(),
+                    "args": vars(args),
+                    "epoch": epoch,
+                    "metrics": record,
+                },
+                args.output_dir / "best_full_kl_model.pt",
+            )
         diagnostics.extend(collect_rows(model, epoch))
         input_diagnostics.extend(collect_input_scales(model, epoch))
         mixture_diagnostics.extend(collect_mixture_diagnostics(model, epoch))
