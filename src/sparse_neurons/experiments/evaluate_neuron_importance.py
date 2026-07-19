@@ -45,6 +45,31 @@ def neuron_importance(layer: TwoSidedGroupARDLinear) -> tuple[torch.Tensor, torc
     return importance, slab_probability.sum(1)
 
 
+@torch.no_grad()
+def save_weight_log_snr_histograms(
+    layers: list[TwoSidedGroupARDLinear], output_dir: Path
+) -> None:
+    """Plot the distribution of log posterior SNR for every matrix weight."""
+    fig, axes = plt.subplots(1, len(layers), figsize=(6 * len(layers), 4), squeeze=False)
+    for layer_index, (axis, layer) in enumerate(zip(axes[0], layers, strict=True), 1):
+        squared_mean = layer.weight_mu.square()
+        log_snr = (
+            squared_mean.clamp_min(torch.finfo(squared_mean.dtype).tiny).log()
+            - layer.weight_log_variance
+        ).flatten().cpu()
+        axis.hist(log_snr.numpy(), bins=80, alpha=0.85)
+        axis.set(
+            xlabel=r"$\log(\mu_{ji}^2/s_{ji}^2)$",
+            ylabel="Weights",
+            title=f"Hidden layer {layer_index} ({log_snr.numel():,} weights)",
+        )
+        axis.grid(axis="y", alpha=0.2)
+    fig.suptitle("Weight-level posterior log-SNR distributions")
+    fig.tight_layout()
+    fig.savefig(output_dir / "weight_log_snr_histograms.png", dpi=180)
+    plt.close(fig)
+
+
 def save_importance(model: nn.Module, output_dir: Path) -> None:
     layers = [
         layer
@@ -53,6 +78,7 @@ def save_importance(model: nn.Module, output_dir: Path) -> None:
     ]
     if not layers:
         raise ValueError("Checkpoint contains no two-sided group-ARD layers")
+    save_weight_log_snr_histograms(layers, output_dir)
 
     rows: list[dict[str, float | int]] = []
     fig, axes = plt.subplots(len(layers), 1, figsize=(10, 4 * len(layers)), squeeze=False)

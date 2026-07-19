@@ -153,6 +153,25 @@ is reported separately and is not multiplied into $I_j$. A numerical pruning
 threshold must be validated by constructing or masking the corresponding
 smaller dense network and measuring its validation loss.
 
+## Weight-level posterior SNR diagnostic
+
+For every matrix weight, define
+
+$$
+\ell_{ji}
+=
+\log\frac{\mu_{ji}^2}{s_{ji}^2}
+=
+2\log|\mu_{ji}|-\log s_{ji}^2.
+$$
+
+This diagnostic is not a neuron-pruning score: it deliberately ignores the
+mixture responsibility and shared neuron structure. Its histogram shows
+whether individual posterior weights separate into low- and high-SNR modes or
+remain spread through an ambiguous intermediate regime. In code, $\mu_{ji}^2$
+is clamped only to the smallest positive number representable by its dtype so
+that an exactly zero mean maps to a finite left-tail value.
+
 ## Selected experiment
 
 The selected learned shared-spike-variance experiment fine-tunes the $98.39\%$
