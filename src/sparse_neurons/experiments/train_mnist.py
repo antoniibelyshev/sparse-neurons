@@ -44,7 +44,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ard-type", choices=("row", "two_sided"), default="row")
     parser.add_argument("--lr-decay-start-epoch", type=int)
     parser.add_argument("--lr-decay-gamma", type=float, default=1.0)
-    parser.add_argument("--mixture-spike-ratio", type=float)
     parser.add_argument(
         "--mixture-spike-variance",
         type=float,
@@ -149,7 +148,6 @@ def make_model(args: argparse.Namespace, device: torch.device) -> nn.Module:
         initial_log_variance=args.initial_log_variance,
         ard_type=args.ard_type,
         initial_relative_variance=args.initial_relative_variance,
-        mixture_spike_ratio=args.mixture_spike_ratio,
         mixture_spike_variance=args.mixture_spike_variance,
     )
     if args.dense_final_layer:
@@ -195,7 +193,7 @@ def collect_mixture_diagnostics(
     for layer_index, layer in enumerate(iter_group_ard_layers(model), start=1):
         if not isinstance(layer, TwoSidedGroupARDLinear):
             continue
-        if layer.mixture_spike_ratio is None and layer.mixture_spike_variance is None:
+        if layer.mixture_spike_variance is None:
             continue
         responsibility = layer.spike_responsibility
         quantiles = torch.quantile(

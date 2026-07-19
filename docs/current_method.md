@@ -155,19 +155,11 @@ smaller dense network and measuring its validation loss.
 
 ## Selected experiment
 
-The fixed-ratio reference run fine-tunes the $98.39\%$ deterministic MNIST baseline with a
-$784$-$300$-$100$-$10$ architecture, dense final classifier, learning rate
-$10^{-4}$, 10 zero-KL epochs, a 60-epoch linear KL ramp, and 30 full-KL epochs.
-
-- Best full-KL accuracy: $98.05\%$ at epoch 74.
-- Final accuracy: $97.88\%$.
-- Final KL per training example: approximately $0.79$.
-
-The retained fixed-ratio reference model is
-`artifacts/mnist_ard_mixture_dense_final/model.pt`.
-
-The learned shared-spike-variance experiment uses the same training setup,
-initializes each $\xi_k$ to $10^{-4}$, and then applies the exact update above.
+The selected learned shared-spike-variance experiment fine-tunes the $98.39\%$
+deterministic MNIST baseline with a $784$-$300$-$100$-$10$ architecture, dense
+final classifier, learning rate $10^{-4}$, 10 zero-KL epochs, a 60-epoch linear
+KL ramp, and 30 full-KL epochs. Each $\xi_k$ is initialized to $10^{-4}$ and
+then receives the exact update above.
 
 - Best full-KL accuracy: $97.66\%$ at epoch 70.
 - Final accuracy: $97.61\%$.
@@ -175,11 +167,5 @@ initializes each $\xi_k$ to $10^{-4}$, and then applies the exact update above.
 - Final spike variances: approximately $2.76\times10^{-5}$ for the first
   matrix and $2.60\times10^{-5}$ for the second matrix.
 
-This is worse than the fixed-ratio reference by $0.39$ percentage points at
-the best full-KL checkpoint and by $0.27$ percentage points at the final
-checkpoint. Its lower KL is therefore not a quality improvement: the absolute
-shared spike makes the model shrink more aggressively. The fixed-ratio run
-remains the selected result.
-
-The learned-variance artifacts are in
+The learned-variance reference artifacts are in
 `artifacts/mnist_ard_learned_spike_variance_dense_final/`.

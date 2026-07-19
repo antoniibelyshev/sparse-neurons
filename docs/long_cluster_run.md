@@ -1,8 +1,9 @@
 # Long cluster run
 
 The cluster entry point trains a fresh deterministic baseline and then the
-selected two-sided grouped-ARD model with a fixed two-Gaussian variance ratio.
-The final classifier stays dense.
+selected two-sided grouped-ARD model with a two-Gaussian prior.
+The low-covariance Gaussian has one trainable variance $\xi_k$ per weight
+matrix. The final classifier stays dense.
 
 ## Default schedule
 
@@ -31,7 +32,7 @@ The defaults are:
 - Baseline: 100 epochs, learning rate $10^{-3}$.
 - ARD: 300 epochs, learning rate $10^{-4}$.
 - KL schedule: 30 epochs off, 200-epoch ramp, 70 epochs at full strength.
-- Mixture ratio: $\kappa=10^{-2}$.
+- Initial low-mode variance: $\xi_k=10^{-4}$, followed by exact M-steps.
 - Architecture: $784$-$300$-$100$-$10$.
 - Checkpoints: every 10 ARD epochs.
 - Selection: retain the highest-accuracy checkpoint after $\beta_t=1$.
@@ -48,7 +49,7 @@ scripts/run_long_mnist.sh
 
 The script downloads MNIST when necessary and writes everything beneath
 `artifacts/mnist_long/`, which Git ignores. The selected checkpoint is
-`ard_fixed_ratio/best_full_kl_model.pt`; importance plots are produced for
+`ard_learned_spike_variance/best_full_kl_model.pt`; importance plots are produced for
 both it and the final model.
 
 Common cluster overrides:

@@ -14,10 +14,10 @@ KL_WARMUP_EPOCHS="${KL_WARMUP_EPOCHS:-200}"
 CHECKPOINT_EVERY="${CHECKPOINT_EVERY:-10}"
 BASELINE_LR="${BASELINE_LR:-0.001}"
 ARD_LR="${ARD_LR:-0.0001}"
-MIXTURE_SPIKE_RATIO="${MIXTURE_SPIKE_RATIO:-0.01}"
+MIXTURE_SPIKE_VARIANCE="${MIXTURE_SPIKE_VARIANCE:-0.0001}"
 
 BASELINE_DIR="${OUTPUT_ROOT}/baseline"
-ARD_DIR="${OUTPUT_ROOT}/ard_fixed_ratio"
+ARD_DIR="${OUTPUT_ROOT}/ard_learned_spike_variance"
 PRETRAINED_CHECKPOINT="${PRETRAINED_CHECKPOINT:-${BASELINE_DIR}/best_model.pt}"
 
 mkdir -p "${OUTPUT_ROOT}" "${OUTPUT_ROOT}/cache/matplotlib"
@@ -51,7 +51,7 @@ uv run train-mnist-ard \
   --kl-warmup-epochs "${KL_WARMUP_EPOCHS}" \
   --pretrained-checkpoint "${PRETRAINED_CHECKPOINT}" \
   --ard-type two_sided \
-  --mixture-spike-ratio "${MIXTURE_SPIKE_RATIO}" \
+  --mixture-spike-variance "${MIXTURE_SPIKE_VARIANCE}" \
   --dense-final-layer \
   --checkpoint-every "${CHECKPOINT_EVERY}"
 

@@ -22,7 +22,6 @@ def convert_linear_layers(
     variance_floor: float = 1e-12,
     ard_type: str = "row",
     initial_relative_variance: float | None = None,
-    mixture_spike_ratio: float | None = None,
     mixture_spike_variance: float | None = None,
 ) -> nn.Module:
     """Replace every ``nn.Linear`` in a network with ``GroupARDLinear``.
@@ -70,7 +69,6 @@ def convert_linear_layers(
                     elif layer_class is TwoSidedGroupARDLinear:
                         replacement = layer_class.from_linear(
                             child,
-                            mixture_spike_ratio=mixture_spike_ratio,
                             mixture_spike_variance=mixture_spike_variance,
                             **common,
                         )
@@ -89,7 +87,6 @@ def convert_linear_layers(
             return layer_class.from_linear(result, a0=a0, b0=b0, **common)
         return layer_class.from_linear(
             result,
-            mixture_spike_ratio=mixture_spike_ratio,
             mixture_spike_variance=mixture_spike_variance,
             **common,
         )

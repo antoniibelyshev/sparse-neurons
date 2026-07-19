@@ -124,17 +124,8 @@ def test_relative_variance_initialization_tracks_copied_means() -> None:
     assert torch.allclose(converted.weight_log_variance.exp(), expected, rtol=1e-5)
 
 
-def test_unit_ratio_mixture_matches_single_gaussian_kl() -> None:
-    plain = TwoSidedGroupARDLinear(5, 3)
-    mixture = TwoSidedGroupARDLinear(5, 3, mixture_spike_ratio=1.0)
-    mixture.load_state_dict(plain.state_dict(), strict=False)
-    plain.update_log_lambda()
-    mixture.update_log_lambda()
-    assert torch.allclose(mixture.kl_divergence(), plain.kl_divergence(), atol=1e-4)
-
-
 def test_mixture_responsibilities_and_kl_are_valid() -> None:
-    layer = TwoSidedGroupARDLinear(7, 4, mixture_spike_ratio=1e-2)
+    layer = TwoSidedGroupARDLinear(7, 4, mixture_spike_variance=1e-4)
     layer.update_log_lambda()
     assert torch.all((layer.spike_responsibility >= 0) & (layer.spike_responsibility <= 1))
     assert 0 < layer.spike_probability.item() < 1
@@ -151,8 +142,7 @@ def test_pretrained_conversion_can_keep_final_layer_dense(tmp_path) -> None:
         initial_log_variance=-12.0,
         initial_relative_variance=None,
         ard_type="two_sided",
-        mixture_spike_ratio=1e-2,
-        mixture_spike_variance=None,
+        mixture_spike_variance=1e-4,
         dense_final_layer=True,
         hidden_sizes=(300, 100),
     )
@@ -180,17 +170,6 @@ def test_shared_spike_variance_has_exact_m_step() -> None:
     assert torch.allclose(layer.log_spike_variance.exp(), expected, rtol=1e-5)
     assert torch.isfinite(layer.kl_divergence())
     assert layer.kl_divergence().item() >= 0
-
-
-def test_mixture_parameterizations_are_mutually_exclusive() -> None:
-    try:
-        TwoSidedGroupARDLinear(
-            3, 2, mixture_spike_ratio=1e-2, mixture_spike_variance=1e-4
-        )
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("expected mutually exclusive mixture parameters")
 
 
 def test_long_run_kl_schedule_reaches_full_strength() -> None:

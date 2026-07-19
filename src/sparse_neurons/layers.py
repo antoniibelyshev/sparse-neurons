@@ -196,7 +196,6 @@ class TwoSidedGroupARDLinear(nn.Module):
         variance_floor: float = 1e-12,
         m_step_sweeps: int = 2,
         fix_output_scale: bool = False,
-        mixture_spike_ratio: float | None = None,
         mixture_spike_variance: float | None = None,
     ) -> None:
         super().__init__()
@@ -205,13 +204,8 @@ class TwoSidedGroupARDLinear(nn.Module):
         self.variance_floor = variance_floor
         self.m_step_sweeps = m_step_sweeps
         self.fix_output_scale = fix_output_scale
-        if mixture_spike_ratio is not None and not 0.0 < mixture_spike_ratio <= 1.0:
-            raise ValueError("mixture_spike_ratio must be in (0, 1]")
         if mixture_spike_variance is not None and mixture_spike_variance <= 0.0:
             raise ValueError("mixture_spike_variance must be positive")
-        if mixture_spike_ratio is not None and mixture_spike_variance is not None:
-            raise ValueError("choose either a spike ratio or a shared spike variance")
-        self.mixture_spike_ratio = mixture_spike_ratio
         self.mixture_spike_variance = mixture_spike_variance
         self.weight_mu = nn.Parameter(torch.empty(out_features, in_features))
         self.weight_log_variance = nn.Parameter(
@@ -261,7 +255,6 @@ class TwoSidedGroupARDLinear(nn.Module):
         m_step_sweeps: int = 2,
         fix_output_scale: bool = False,
         initial_relative_variance: float | None = None,
-        mixture_spike_ratio: float | None = None,
         mixture_spike_variance: float | None = None,
     ) -> TwoSidedGroupARDLinear:
         converted = cls(
@@ -272,7 +265,6 @@ class TwoSidedGroupARDLinear(nn.Module):
             variance_floor=variance_floor,
             m_step_sweeps=m_step_sweeps,
             fix_output_scale=fix_output_scale,
-            mixture_spike_ratio=mixture_spike_ratio,
             mixture_spike_variance=mixture_spike_variance,
         ).to(device=layer.weight.device, dtype=layer.weight.dtype)
         with torch.no_grad():
@@ -352,31 +344,21 @@ class TwoSidedGroupARDLinear(nn.Module):
 
     @torch.no_grad()
     def _update_mixture(self, second_moment: Tensor) -> Tensor:
-        if self.mixture_spike_ratio is None and self.mixture_spike_variance is None:
+        if self.mixture_spike_variance is None:
             return torch.ones_like(second_moment)
         base_precision = self.log_lambda_out.exp()[:, None] * self.log_lambda_in.exp()[None, :]
         probability = self.spike_probability.clamp(1e-6, 1.0 - 1e-6)
         logit_probability = probability.log() - (-probability).log1p()
-        if self.mixture_spike_ratio is not None:
-            kappa = self.mixture_spike_ratio
-            responsibility_logit = (
-                logit_probability
-                - 0.5 * math.log(kappa)
-                - 0.5 * base_precision * second_moment * (1.0 / kappa - 1.0)
-            )
-        else:
-            spike_precision = (-self.log_spike_variance).exp()
-            responsibility_logit = (
-                logit_probability
-                - 0.5 * (base_precision.log() + self.log_spike_variance)
-                - 0.5 * second_moment * (spike_precision - base_precision)
-            )
+        spike_precision = (-self.log_spike_variance).exp()
+        responsibility_logit = (
+            logit_probability
+            - 0.5 * (base_precision.log() + self.log_spike_variance)
+            - 0.5 * second_moment * (spike_precision - base_precision)
+        )
         self.spike_responsibility.copy_(responsibility_logit.sigmoid())
         self.spike_probability.copy_(
             self.spike_responsibility.mean().clamp(1e-6, 1.0 - 1e-6)
         )
-        if self.mixture_spike_ratio is not None:
-            return self.spike_responsibility / kappa + (1.0 - self.spike_responsibility)
         spike_mass = self.spike_responsibility.sum()
         spike_variance = (
             (self.spike_responsibility * second_moment).sum()
@@ -396,7 +378,7 @@ class TwoSidedGroupARDLinear(nn.Module):
 
     def kl_divergence(self) -> Tensor:
         base_precision = self.log_lambda_out[:, None].exp() * self.log_lambda_in[None, :].exp()
-        if self.mixture_spike_ratio is None and self.mixture_spike_variance is None:
+        if self.mixture_spike_variance is None:
             edge_kl = 0.5 * (
                 base_precision * self.weight_second_moment()
                 - 1.0
@@ -404,25 +386,6 @@ class TwoSidedGroupARDLinear(nn.Module):
                 - self.log_lambda_in[None, :]
                 - self.weight_log_variance
             )
-        elif self.mixture_spike_ratio is not None:
-            kappa = self.mixture_spike_ratio
-            responsibility = self.spike_responsibility.clamp(1e-6, 1.0 - 1e-6)
-            probability = self.spike_probability.clamp(1e-6, 1.0 - 1e-6)
-            precision_multiplier = responsibility / kappa + (1.0 - responsibility)
-            gaussian_kl = 0.5 * (
-                base_precision * precision_multiplier * self.weight_second_moment()
-                - 1.0
-                - self.log_lambda_out[:, None]
-                - self.log_lambda_in[None, :]
-                - self.weight_log_variance
-                + responsibility * math.log(kappa)
-            )
-            categorical_kl = (
-                responsibility * (responsibility.log() - probability.log())
-                + (1.0 - responsibility)
-                * ((1.0 - responsibility).log() - (1.0 - probability).log())
-            )
-            edge_kl = gaussian_kl + categorical_kl
         else:
             responsibility = self.spike_responsibility.clamp(1e-6, 1.0 - 1e-6)
             slab_responsibility = 1.0 - responsibility
