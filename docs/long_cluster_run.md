@@ -43,7 +43,7 @@ $$
 \left(1+\cos\frac{\pi t}{T}\right),
 $$
 
-where $\eta_0=10^{-3}$ and $\eta_{\min}=10^{-5}$.
+where $\eta_0=10^{-2}$ and $\eta_{\min}=10^{-4}$.
 
 Both phases maintain an exponential moving average of trainable parameters,
 
@@ -76,8 +76,9 @@ regularizes its weights.
 
 The defaults are:
 
-- Baseline: 100 epochs, learning rate $10^{-3}$, L2 coefficient $10^{-3}$.
-- ARD: 300 epochs, initial learning rate $10^{-3}$ with cosine decay.
+- Baseline: 100 epochs, initial learning rate $10^{-2}$ with cosine decay and
+  L2 coefficient $10^{-3}$.
+- ARD: 300 epochs, initial learning rate $10^{-2}$ with cosine decay.
 - Batch size: 1024 for both phases.
 - KL schedule: 200-epoch ramp from the first epoch, then 100 full-KL epochs.
 - EMA decay: $0.999$ in both phases.
