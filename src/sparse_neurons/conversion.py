@@ -7,9 +7,7 @@ from collections.abc import Iterator
 
 from torch import nn
 
-from sparse_neurons.layers import GroupARDLinear, TwoSidedGroupARDLinear
-
-ARDLinear = GroupARDLinear | TwoSidedGroupARDLinear
+from sparse_neurons.layers import TwoSidedGroupARDLinear
 
 
 def convert_linear_layers(
@@ -17,14 +15,11 @@ def convert_linear_layers(
     *,
     copy_module: bool = True,
     initial_log_variance: float = -12.0,
-    a0: float | None = None,
-    b0: float | None = None,
     variance_floor: float = 1e-12,
-    ard_type: str = "row",
     initial_relative_variance: float | None = None,
-    mixture_spike_variance: float | None = None,
+    mixture_spike_variance: float = 1e-4,
 ) -> nn.Module:
-    """Replace every ``nn.Linear`` in a network with ``GroupARDLinear``.
+    """Replace every ``nn.Linear`` with the selected augmented ARD layer.
 
     By default the complete network is deep-copied, so the input model remains
     unchanged. All non-linear modules and their state are preserved. Linear
@@ -36,24 +31,16 @@ def convert_linear_layers(
         module: A standard Torch module, potentially with nested containers.
         copy_module: Deep-copy ``module`` before replacing layers.
         initial_log_variance: Initial posterior log variance in converted layers.
-        a0: Optional Gamma-prior shape for all converted layers.
-        b0: Optional Gamma-prior rate for all converted layers.
         variance_floor: Numerical variance floor.
     """
     result = copy.deepcopy(module) if copy_module else module
-    if ard_type not in {"row", "two_sided"}:
-        raise ValueError("ard_type must be 'row' or 'two_sided'")
-    layer_class = {
-        "row": GroupARDLinear,
-        "two_sided": TwoSidedGroupARDLinear,
-    }[ard_type]
-    replacements: dict[int, ARDLinear] = {}
+    replacements: dict[int, TwoSidedGroupARDLinear] = {}
 
     def convert_children(parent: nn.Module) -> None:
         for name, child in tuple(parent._modules.items()):
             if child is None:
                 continue
-            if isinstance(child, (GroupARDLinear, TwoSidedGroupARDLinear)):
+            if isinstance(child, TwoSidedGroupARDLinear):
                 continue
             if isinstance(child, nn.Linear):
                 key = id(child)
@@ -64,28 +51,23 @@ def convert_linear_layers(
                         "variance_floor": variance_floor,
                         "initial_relative_variance": initial_relative_variance,
                     }
-                    if layer_class is GroupARDLinear:
-                        replacement = layer_class.from_linear(child, a0=a0, b0=b0, **common)
-                    elif layer_class is TwoSidedGroupARDLinear:
-                        replacement = layer_class.from_linear(
-                            child,
-                            mixture_spike_variance=mixture_spike_variance,
-                            **common,
-                        )
+                    replacement = TwoSidedGroupARDLinear.from_linear(
+                        child,
+                        mixture_spike_variance=mixture_spike_variance,
+                        **common,
+                    )
                     replacements[key] = replacement
                 parent._modules[name] = replacement
             else:
                 convert_children(child)
 
-    if isinstance(result, nn.Linear) and not isinstance(result, ARDLinear):
+    if isinstance(result, nn.Linear):
         common = {
             "initial_log_variance": initial_log_variance,
             "variance_floor": variance_floor,
             "initial_relative_variance": initial_relative_variance,
         }
-        if layer_class is GroupARDLinear:
-            return layer_class.from_linear(result, a0=a0, b0=b0, **common)
-        return layer_class.from_linear(
+        return TwoSidedGroupARDLinear.from_linear(
             result,
             mixture_spike_variance=mixture_spike_variance,
             **common,
@@ -94,10 +76,10 @@ def convert_linear_layers(
     return result
 
 
-def iter_group_ard_layers(module: nn.Module) -> Iterator[ARDLinear]:
+def iter_group_ard_layers(module: nn.Module) -> Iterator[TwoSidedGroupARDLinear]:
     """Iterate over all group-ARD layers in a module tree."""
     for child in module.modules():
-        if isinstance(child, (GroupARDLinear, TwoSidedGroupARDLinear)):
+        if isinstance(child, TwoSidedGroupARDLinear):
             yield child
 
 

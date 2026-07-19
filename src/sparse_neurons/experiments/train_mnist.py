@@ -21,7 +21,7 @@ from sparse_neurons.conversion import (
     iter_group_ard_layers,
     update_log_lambdas,
 )
-from sparse_neurons.models import DeterministicLeNet300100, LeNet300100
+from sparse_neurons.models import DeterministicLeNet300100
 from sparse_neurons.layers import TwoSidedGroupARDLinear
 
 
@@ -40,8 +40,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--kl-zero-epochs", type=int, default=5)
     parser.add_argument("--kl-warmup-epochs", type=int, default=25)
     parser.add_argument("--no-download", action="store_true")
-    parser.add_argument("--pretrained-checkpoint", type=Path)
-    parser.add_argument("--ard-type", choices=("row", "two_sided"), default="row")
+    parser.add_argument("--pretrained-checkpoint", type=Path, required=True)
     parser.add_argument("--lr-decay-start-epoch", type=int)
     parser.add_argument("--lr-decay-gamma", type=float, default=1.0)
     parser.add_argument(
@@ -49,7 +48,6 @@ def parse_args() -> argparse.Namespace:
         type=float,
         help="Initial absolute spike variance; updated analytically per matrix",
     )
-    parser.add_argument("--dense-final-layer", action="store_true")
     parser.add_argument("--hidden-sizes", type=int, nargs=2, default=(300, 100))
     parser.add_argument("--checkpoint-every", type=int)
     return parser.parse_args()
@@ -129,12 +127,6 @@ def collect_rows(model: nn.Module, epoch: int) -> list[dict[str, float | int]]:
 
 
 def make_model(args: argparse.Namespace, device: torch.device) -> nn.Module:
-    if args.pretrained_checkpoint is None:
-        return LeNet300100(
-            initial_log_variance=args.initial_log_variance,
-            hidden_sizes=tuple(args.hidden_sizes),
-        ).to(device)
-
     checkpoint = torch.load(args.pretrained_checkpoint, map_location=device, weights_only=False)
     checkpoint_args = checkpoint.get("args", {})
     hidden_sizes = tuple(
@@ -146,18 +138,11 @@ def make_model(args: argparse.Namespace, device: torch.device) -> nn.Module:
     converted = convert_linear_layers(
         deterministic,
         initial_log_variance=args.initial_log_variance,
-        ard_type=args.ard_type,
         initial_relative_variance=args.initial_relative_variance,
         mixture_spike_variance=args.mixture_spike_variance,
     )
-    if args.dense_final_layer:
-        converted.layers[-1] = copy.deepcopy(deterministic.layers[-1])
-        print("final_layer=dense", flush=True)
-    elif args.ard_type == "two_sided":
-        layers = list(iter_group_ard_layers(converted))
-        final_layer = layers[-1]
-        assert isinstance(final_layer, TwoSidedGroupARDLinear)
-        final_layer.set_output_scale_fixed()
+    converted.layers[-1] = copy.deepcopy(deterministic.layers[-1])
+    print("final_layer=dense", flush=True)
     print(
         f"converted_pretrained={args.pretrained_checkpoint} "
         f"baseline_epoch={checkpoint.get('epoch', 'unknown')}",
@@ -195,8 +180,6 @@ def collect_mixture_diagnostics(
     rows: list[dict[str, float | int]] = []
     for layer_index, layer in enumerate(iter_group_ard_layers(model), start=1):
         if not isinstance(layer, TwoSidedGroupARDLinear):
-            continue
-        if layer.mixture_spike_variance is None:
             continue
         responsibility = layer.spike_responsibility.flatten()
         quantiles = torch.quantile(

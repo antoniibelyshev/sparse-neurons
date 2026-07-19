@@ -52,9 +52,7 @@ uv run train-mnist-ard \
   --kl-zero-epochs "${KL_ZERO_EPOCHS}" \
   --kl-warmup-epochs "${KL_WARMUP_EPOCHS}" \
   --pretrained-checkpoint "${PRETRAINED_CHECKPOINT}" \
-  --ard-type two_sided \
   --mixture-spike-variance "${MIXTURE_SPIKE_VARIANCE}" \
-  --dense-final-layer \
   --checkpoint-every "${CHECKPOINT_EVERY}"
 
 uv run evaluate-neuron-importance \

@@ -41,16 +41,6 @@ large-weight interpolating solution before variational fine-tuning. It does
 not add another penalty to the ARD phase, whose Gaussian-mixture KL already
 regularizes its weights.
 
-A local 100-epoch comparison gave:
-
-| Baseline | Best accuracy | Test NLL | Train NLL | $\lVert\theta\rVert_2$ |
-|---|---:|---:|---:|---:|
-| $\gamma=0$ | $98.39\%$ | $0.1016$ | $2.72\times10^{-5}$ | $29.83$ |
-| $\gamma=10^{-4}$ | $98.49\%$ | $0.0606$ | $8.66\times10^{-4}$ | $14.92$ |
-
-The regularized checkpoint is both slightly more accurate and substantially
-smaller in norm, making it the better initialization for the long ARD run.
-
 The defaults are:
 
 - Baseline: 100 epochs, learning rate $10^{-3}$, L2 coefficient $10^{-4}$.

@@ -51,10 +51,9 @@ p(w_{ji}^{(k)}\mid z_{ji}^{(k)}=1)
 \mathcal N(0,v_{ji}^{(k)}),
 $$
 
-The spike therefore represents a single absolute noise scale rather than a
-fixed fraction of every structural slab scale. The final classifier remains
-deterministic and dense; columns corresponding to removed last-hidden-layer
-neurons can still be deleted during compression.
+The spike therefore represents a single absolute noise scale. The final
+classifier remains deterministic and dense; columns corresponding to removed
+last-hidden-layer neurons can still be deleted during compression.
 
 ## Analytical updates
 
@@ -176,20 +175,3 @@ whether individual posterior weights separate into low- and high-SNR modes or
 remain spread through an ambiguous intermediate regime. In code, $\mu_{ji}^2$
 is clamped only to the smallest positive number representable by its dtype so
 that an exactly zero mean maps to a finite left-tail value.
-
-## Selected experiment
-
-The selected learned shared-spike-variance experiment fine-tunes the $98.39\%$
-deterministic MNIST baseline with a $784$-$300$-$100$-$10$ architecture, dense
-final classifier, learning rate $10^{-4}$, 10 zero-KL epochs, a 60-epoch linear
-KL ramp, and 30 full-KL epochs. Each $\xi_k$ is initialized to $10^{-4}$ and
-then receives the exact update above.
-
-- Best full-KL accuracy: $97.66\%$ at epoch 70.
-- Final accuracy: $97.61\%$.
-- Final KL per training example: $0.4615$.
-- Final spike variances: approximately $2.76\times10^{-5}$ for the first
-  matrix and $2.60\times10^{-5}$ for the second matrix.
-
-The learned-variance reference artifacts are in
-`artifacts/mnist_ard_learned_spike_variance_dense_final/`.

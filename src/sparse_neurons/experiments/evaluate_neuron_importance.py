@@ -1,4 +1,4 @@
-"""Plot the selected model's slab-conditioned neuron importance."""
+"""Plot maximum augmented-weight SNR neuron importance."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ def load_model(checkpoint_path: Path, device: torch.device) -> nn.Module:
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     args = Namespace(**checkpoint["args"])
     model = make_model(args, device)
-    model.load_state_dict(checkpoint["model"], strict=False)
+    model.load_state_dict(checkpoint["model"])
     model.eval()
     return model
 
