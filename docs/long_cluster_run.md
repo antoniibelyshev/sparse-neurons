@@ -69,14 +69,14 @@ $$
 +\frac{\gamma}{2}\lVert\theta\rVert_2^2,
 $$
 
-with $\gamma=10^{-4}$. This mild baseline-only penalty discourages a sharp,
+with $\gamma=10^{-3}$. This baseline-only penalty discourages a sharp,
 large-weight interpolating solution before variational fine-tuning. It does
 not add another penalty to the ARD phase, whose Gaussian-mixture KL already
 regularizes its weights.
 
 The defaults are:
 
-- Baseline: 100 epochs, learning rate $10^{-3}$, L2 coefficient $10^{-4}$.
+- Baseline: 100 epochs, learning rate $10^{-3}$, L2 coefficient $10^{-3}$.
 - ARD: 300 epochs, initial learning rate $10^{-3}$ with cosine decay.
 - Batch size: 1024 for both phases.
 - KL schedule: 200-epoch ramp from the first epoch, then 100 full-KL epochs.
