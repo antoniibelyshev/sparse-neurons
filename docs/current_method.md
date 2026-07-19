@@ -25,6 +25,13 @@ v_{ji}^{(k)}
 \tau_{j,\mathrm{out}}^{(k)}.
 $$
 
+Bias is represented by the augmented constant input $x_0=1$ with
+$w_{j0}=b_j$ and fixed input scale $\tau_{0,\mathrm{in}}=1$. Consequently,
+
+$$
+v_{j0}^{(k)}=\tau_{j,\mathrm{out}}^{(k)}.
+$$
+
 This makes a weight small when either its input endpoint or its output endpoint
 is irrelevant. Hidden layers additionally use a two-Gaussian mixture. Its
 spike variance $\xi_k$ is a learned scalar shared by the complete weight matrix:
@@ -75,7 +82,10 @@ $$
 where $\lambda=1/\tau$. The mixture probability update is
 
 $$
-\pi=\frac1{|W|}\sum_{j,i}r_{ji}.
+\pi
+=
+\frac1{n_k(n_{k-1}+1)}
+\sum_j\sum_{i=0}^{n_{k-1}}r_{ji}.
 $$
 
 The matrix-level spike variance also has an exact M-step:
@@ -84,19 +94,23 @@ $$
 \boxed{
 \xi_k
 =
-\frac{\sum_{j,i}r_{ji}S_{ji}}{\sum_{j,i}r_{ji}}
+\frac{
+\sum_j\sum_{i=0}^{n_{k-1}}r_{ji}S_{ji}
+}{
+\sum_j\sum_{i=0}^{n_{k-1}}r_{ji}
+}
 }.
 $$
 
-Let $u_{ji}=1-r_{ji}$ be the slab responsibility. Ignoring biases for
-compactness, the structural scales occur only in the slab component, so their
-alternating maximum-likelihood updates are
+Let $u_{ji}=1-r_{ji}$ be the slab responsibility and
+$\lambda_{0,\mathrm{in}}=1$. The structural scales occur only in the slab
+component, so their alternating maximum-likelihood updates are
 
 $$
 \lambda_{j,\mathrm{out}}
 =
-\frac{\sum_i u_{ji}}{
-\sum_i
+\frac{\sum_{i=0}^{n_{k-1}} u_{ji}}{
+\sum_{i=0}^{n_{k-1}}
 u_{ji}S_{ji}\lambda_{i,\mathrm{in}}
 },
 $$
@@ -110,52 +124,42 @@ u_{ji}S_{ji}\lambda_{j,\mathrm{out}}
 }.
 $$
 
-For an output scale whose Gaussian bias belongs to the slab, add one to its
-numerator and add the bias second moment to its denominator. These coordinate
-updates are performed every optimization iteration. A small numerical floor
-on $\xi_k$ prevents the standard singularity of unconstrained Gaussian-mixture
-maximum likelihood. Gradients update $\mu$ and $\log s^2$ using the
-reparameterized expected negative log likelihood plus the Gaussian-mixture
-variational KL. The KL coefficient is turned on gradually after deterministic
-pretraining.
+The input-scale update applies only to $i\geq1$ because the constant input
+scale is fixed. Thus, bias responsibility affects the output scale, mixture
+probability, and shared spike variance, but cannot create a redundant scale
+degree of freedom. These coordinate updates are performed every optimization
+iteration. A small numerical floor on $\xi_k$ prevents the standard
+singularity of unconstrained Gaussian-mixture maximum likelihood. Gradients
+update $\mu$ and $\log s^2$ using the reparameterized expected negative log
+likelihood plus the Gaussian-mixture variational KL. The KL coefficient is
+turned on gradually after deterministic pretraining.
 
 ## Neuron importance
 
-The retained parameter-based importance is the slab-conditioned row SNR. Let
-
-$$
-u_{ji}=1-r_{ji}.
-$$
-
-For output neuron $j$,
+Introduce the constant augmented input $x_0=1$ and represent the bias as
+$w_{j0}=b_j$. The parameter-based importance of output neuron $j$ is the
+largest posterior SNR among all its augmented incoming weights:
 
 $$
 \boxed{
 I_j
 =
-\frac{
-\mu_{b,j}^2+
-\sum_i u_{ji}\mu_{ji}^2
-}{
-s_{b,j}^2+
-\sum_i u_{ji}s_{ji}^2
-}.
+\max_{i\in\{0,\ldots,n_{\mathrm{in}}\}}
+\frac{\mu_{ji}^2}{s_{ji}^2}.
 }
 $$
 
-The sums are taken before their ratio. Effective slab support
-
-$$
-M_j=\sum_i u_{ji}
-$$
-
-is reported separately and is not multiplied into $I_j$. A numerical pruning
-threshold must be validated by constructing or masking the corresponding
+This makes the bias contribution identical to that of any other connection,
+with its input activation fixed at one. The score keeps a neuron whenever it
+has at least one incoming connection whose posterior mean is large relative
+to its uncertainty. It is deliberately conservative: every augmented weight
+must have low SNR before the neuron receives low importance. A numerical
+pruning threshold must still be validated by constructing the corresponding
 smaller dense network and measuring its validation loss.
 
 ## Weight-level posterior SNR diagnostic
 
-For every matrix weight, define
+For every augmented weight, including $w_{j0}=b_j$, define
 
 $$
 \ell_{ji}

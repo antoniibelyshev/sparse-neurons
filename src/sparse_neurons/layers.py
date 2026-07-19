@@ -231,6 +231,7 @@ class TwoSidedGroupARDLinear(nn.Module):
         self.register_buffer(
             "spike_responsibility", torch.zeros(out_features, in_features)
         )
+        self.register_buffer("bias_spike_responsibility", torch.zeros(out_features))
         self.reset_parameters()
 
     @property
@@ -317,12 +318,17 @@ class TwoSidedGroupARDLinear(nn.Module):
                     output_dimension = 1.0 - self.spike_responsibility
                     output_dimension = output_dimension.sum(1)
                 if self.bias_mu is not None:
-                    output_energy = (
-                        output_energy
-                        + self.bias_mu.square()
-                        + self.bias_log_variance.exp()
+                    bias_second_moment = (
+                        self.bias_mu.square() + self.bias_log_variance.exp()
                     )
-                    output_dimension = output_dimension + 1
+                    if self.mixture_spike_variance is None:
+                        bias_slab_responsibility = torch.ones_like(bias_second_moment)
+                    else:
+                        bias_slab_responsibility = 1.0 - self.bias_spike_responsibility
+                    output_energy = (
+                        output_energy + bias_slab_responsibility * bias_second_moment
+                    )
+                    output_dimension = output_dimension + bias_slab_responsibility
                 self.log_lambda_out.copy_(
                     output_dimension.clamp_min(self.variance_floor).log()
                     - output_energy.clamp_min(self.variance_floor).log()
@@ -356,14 +362,34 @@ class TwoSidedGroupARDLinear(nn.Module):
             - 0.5 * second_moment * (spike_precision - base_precision)
         )
         self.spike_responsibility.copy_(responsibility_logit.sigmoid())
+        if self.bias_mu is not None:
+            bias_second_moment = self.bias_mu.square() + self.bias_log_variance.exp()
+            bias_base_precision = self.log_lambda_out.exp()
+            bias_responsibility_logit = (
+                logit_probability
+                - 0.5 * (bias_base_precision.log() + self.log_spike_variance)
+                - 0.5
+                * bias_second_moment
+                * (spike_precision - bias_base_precision)
+            )
+            self.bias_spike_responsibility.copy_(bias_responsibility_logit.sigmoid())
+            all_responsibilities = torch.cat(
+                (self.spike_responsibility.flatten(), self.bias_spike_responsibility)
+            )
+        else:
+            all_responsibilities = self.spike_responsibility.flatten()
         self.spike_probability.copy_(
-            self.spike_responsibility.mean().clamp(1e-6, 1.0 - 1e-6)
+            all_responsibilities.mean().clamp(1e-6, 1.0 - 1e-6)
         )
-        spike_mass = self.spike_responsibility.sum()
-        spike_variance = (
-            (self.spike_responsibility * second_moment).sum()
-            / spike_mass.clamp_min(self.variance_floor)
-        ).clamp_min(self.variance_floor)
+        spike_mass = all_responsibilities.sum()
+        spike_energy = (self.spike_responsibility * second_moment).sum()
+        if self.bias_mu is not None:
+            spike_energy = spike_energy + (
+                self.bias_spike_responsibility * bias_second_moment
+            ).sum()
+        spike_variance = (spike_energy / spike_mass.clamp_min(self.variance_floor)).clamp_min(
+            self.variance_floor
+        )
         self.log_spike_variance.copy_(spike_variance.log())
         return 1.0 - self.spike_responsibility
 
@@ -409,12 +435,35 @@ class TwoSidedGroupARDLinear(nn.Module):
         total = edge_kl.sum()
         if self.bias_mu is not None:
             bias_second_moment = self.bias_mu.square() + self.bias_log_variance.exp()
-            total = total + 0.5 * (
-                self.log_lambda_out.exp() * bias_second_moment
-                - 1.0
-                - self.log_lambda_out
-                - self.bias_log_variance
-            ).sum()
+            if self.mixture_spike_variance is None:
+                bias_kl = 0.5 * (
+                    self.log_lambda_out.exp() * bias_second_moment
+                    - 1.0
+                    - self.log_lambda_out
+                    - self.bias_log_variance
+                )
+            else:
+                responsibility = self.bias_spike_responsibility.clamp(1e-6, 1.0 - 1e-6)
+                slab_responsibility = 1.0 - responsibility
+                probability = self.spike_probability.clamp(1e-6, 1.0 - 1e-6)
+                spike_precision = (-self.log_spike_variance).exp()
+                bias_kl = 0.5 * (
+                    (
+                        responsibility * spike_precision
+                        + slab_responsibility * self.log_lambda_out.exp()
+                    )
+                    * bias_second_moment
+                    - 1.0
+                    - self.bias_log_variance
+                    + responsibility * self.log_spike_variance
+                    - slab_responsibility * self.log_lambda_out
+                )
+                bias_kl = bias_kl + (
+                    responsibility * (responsibility.log() - probability.log())
+                    + slab_responsibility
+                    * (slab_responsibility.log() - (1.0 - probability).log())
+                )
+            total = total + bias_kl.sum()
         return total
 
     def forward(self, input: Tensor, *, sample: bool | None = None) -> Tensor:

@@ -8,6 +8,7 @@ from sparse_neurons.layers import GroupARDLinear, TwoSidedGroupARDLinear
 from sparse_neurons.models import DeterministicLeNet300100
 from sparse_neurons.experiments.train_mnist import make_model
 from sparse_neurons.experiments.train_mnist import kl_weight
+from sparse_neurons.experiments.evaluate_neuron_importance import neuron_importance
 from argparse import Namespace
 
 
@@ -128,6 +129,10 @@ def test_mixture_responsibilities_and_kl_are_valid() -> None:
     layer = TwoSidedGroupARDLinear(7, 4, mixture_spike_variance=1e-4)
     layer.update_log_lambda()
     assert torch.all((layer.spike_responsibility >= 0) & (layer.spike_responsibility <= 1))
+    assert torch.all(
+        (layer.bias_spike_responsibility >= 0)
+        & (layer.bias_spike_responsibility <= 1)
+    )
     assert 0 < layer.spike_probability.item() < 1
     assert torch.isfinite(layer.kl_divergence())
     assert layer.kl_divergence().item() >= 0
@@ -166,7 +171,12 @@ def test_shared_spike_variance_has_exact_m_step() -> None:
     )
     layer.update_log_lambda()
     responsibility = layer.spike_responsibility
-    expected = (responsibility * layer.weight_second_moment()).sum() / responsibility.sum()
+    bias_responsibility = layer.bias_spike_responsibility
+    bias_second_moment = layer.bias_mu.square() + layer.bias_log_variance.exp()
+    expected = (
+        (responsibility * layer.weight_second_moment()).sum()
+        + (bias_responsibility * bias_second_moment).sum()
+    ) / (responsibility.sum() + bias_responsibility.sum())
     assert torch.allclose(layer.log_spike_variance.exp(), expected, rtol=1e-5)
     assert torch.isfinite(layer.kl_divergence())
     assert layer.kl_divergence().item() >= 0
@@ -177,3 +187,15 @@ def test_long_run_kl_schedule_reaches_full_strength() -> None:
     assert kl_weight(130, zero_epochs=30, warmup_epochs=200) == 0.5
     assert kl_weight(230, zero_epochs=30, warmup_epochs=200) == 1.0
     assert kl_weight(300, zero_epochs=30, warmup_epochs=200) == 1.0
+
+
+def test_neuron_importance_is_maximum_weight_snr() -> None:
+    layer = TwoSidedGroupARDLinear(3, 2, mixture_spike_variance=1e-4)
+    with torch.no_grad():
+        layer.weight_mu.copy_(torch.tensor([[1.0, 2.0, 3.0], [2.0, 1.0, 0.5]]))
+        layer.weight_log_variance.copy_(
+            torch.tensor([[1.0, 2.0, 3.0], [4.0, 0.5, 0.25]]).log()
+        )
+        layer.bias_mu.copy_(torch.tensor([2.0, 0.0]))
+        layer.bias_log_variance.zero_()
+    assert torch.allclose(neuron_importance(layer), torch.tensor([4.0, 2.0]))

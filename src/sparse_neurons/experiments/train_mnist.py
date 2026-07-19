@@ -195,9 +195,13 @@ def collect_mixture_diagnostics(
             continue
         if layer.mixture_spike_variance is None:
             continue
-        responsibility = layer.spike_responsibility
+        responsibility = layer.spike_responsibility.flatten()
+        if layer.bias_mu is not None:
+            responsibility = torch.cat(
+                (responsibility, layer.bias_spike_responsibility)
+            )
         quantiles = torch.quantile(
-            responsibility.flatten(), torch.tensor([0.1, 0.5, 0.9], device=responsibility.device)
+            responsibility, torch.tensor([0.1, 0.5, 0.9], device=responsibility.device)
         )
         rows.append(
             {

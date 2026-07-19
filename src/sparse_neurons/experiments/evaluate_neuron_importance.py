@@ -28,21 +28,22 @@ def load_model(checkpoint_path: Path, device: torch.device) -> nn.Module:
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     args = Namespace(**checkpoint["args"])
     model = make_model(args, device)
-    model.load_state_dict(checkpoint["model"])
+    model.load_state_dict(checkpoint["model"], strict=False)
     model.eval()
     return model
 
 
-def neuron_importance(layer: TwoSidedGroupARDLinear) -> tuple[torch.Tensor, torch.Tensor]:
-    """Return slab-conditioned row SNR and effective slab support."""
-    slab_probability = 1.0 - layer.spike_responsibility
-    signal = (slab_probability * layer.weight_mu.square()).sum(1)
-    noise = (slab_probability * layer.weight_log_variance.exp()).sum(1)
+def neuron_importance(layer: TwoSidedGroupARDLinear) -> torch.Tensor:
+    """Return maximum posterior SNR, treating bias as a constant-input weight."""
+    weight_snr = layer.weight_mu.square() / layer.weight_log_variance.exp().clamp_min(
+        layer.variance_floor
+    )
     if layer.bias_mu is not None:
-        signal = signal + layer.bias_mu.square()
-        noise = noise + layer.bias_log_variance.exp()
-    importance = signal / noise.clamp_min(layer.variance_floor)
-    return importance, slab_probability.sum(1)
+        bias_snr = layer.bias_mu.square() / layer.bias_log_variance.exp().clamp_min(
+            layer.variance_floor
+        )
+        weight_snr = torch.cat((weight_snr, bias_snr[:, None]), dim=1)
+    return weight_snr.amax(1)
 
 
 @torch.no_grad()
@@ -52,11 +53,16 @@ def save_weight_log_snr_histograms(
     """Plot the distribution of log posterior SNR for every matrix weight."""
     fig, axes = plt.subplots(1, len(layers), figsize=(6 * len(layers), 4), squeeze=False)
     for layer_index, (axis, layer) in enumerate(zip(axes[0], layers, strict=True), 1):
-        squared_mean = layer.weight_mu.square()
+        means = layer.weight_mu.flatten()
+        log_variances = layer.weight_log_variance.flatten()
+        if layer.bias_mu is not None:
+            means = torch.cat((means, layer.bias_mu))
+            log_variances = torch.cat((log_variances, layer.bias_log_variance))
+        squared_mean = means.square()
         log_snr = (
             squared_mean.clamp_min(torch.finfo(squared_mean.dtype).tiny).log()
-            - layer.weight_log_variance
-        ).flatten().cpu()
+            - log_variances
+        ).cpu()
         axis.hist(log_snr.numpy(), bins=80, alpha=0.85)
         axis.set(
             xlabel=r"$\log(\mu_{ji}^2/s_{ji}^2)$",
@@ -83,9 +89,8 @@ def save_importance(model: nn.Module, output_dir: Path) -> None:
     rows: list[dict[str, float | int]] = []
     fig, axes = plt.subplots(len(layers), 1, figsize=(10, 4 * len(layers)), squeeze=False)
     for layer_index, (axis, layer) in enumerate(zip(axes[:, 0], layers, strict=True), 1):
-        importance, support = neuron_importance(layer)
+        importance = neuron_importance(layer)
         importance = importance.detach().cpu()
-        support = support.detach().cpu()
         order = importance.argsort(descending=True)
         for rank, neuron in enumerate(order.tolist(), 1):
             rows.append(
@@ -94,7 +99,6 @@ def save_importance(model: nn.Module, output_dir: Path) -> None:
                     "rank": rank,
                     "neuron": neuron,
                     "importance": importance[neuron].item(),
-                    "slab_support": support[neuron].item(),
                 }
             )
         axis.bar(
@@ -105,7 +109,7 @@ def save_importance(model: nn.Module, output_dir: Path) -> None:
         axis.set_yscale("log")
         axis.set(
             xlabel="Importance rank (most to least important)",
-            ylabel="Slab-conditioned row SNR",
+            ylabel=r"Maximum augmented-weight SNR $\max_i \mu_{ji}^2/s_{ji}^2$",
             title=f"Hidden layer {layer_index}",
         )
         axis.grid(axis="y", which="both", alpha=0.2)
