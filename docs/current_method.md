@@ -26,10 +26,13 @@ v_{ji}^{(k)}
 $$
 
 Bias is represented by the augmented constant input $x_0=1$ with
-$w_{j0}=b_j$ and fixed input scale $\tau_{0,\mathrm{in}}=1$. Consequently,
+$w_{j0}=b_j$. Its activation is fixed, but its prior input scale
+$\tau_{0,\mathrm{in}}$ is learned like the other entries. Consequently,
 
 $$
-v_{j0}^{(k)}=\tau_{j,\mathrm{out}}^{(k)}.
+v_{j0}^{(k)}
+=
+\tau_{0,\mathrm{in}}^{(k)}\tau_{j,\mathrm{out}}^{(k)}.
 $$
 
 This makes a weight small when either its input endpoint or its output endpoint
@@ -102,9 +105,9 @@ $$
 }.
 $$
 
-Let $u_{ji}=1-r_{ji}$ be the slab responsibility and
-$\lambda_{0,\mathrm{in}}=1$. The structural scales occur only in the slab
-component, so their alternating maximum-likelihood updates are
+Let $u_{ji}=1-r_{ji}$ be the slab responsibility. The structural scales occur
+only in the slab component, so their alternating maximum-likelihood updates
+are
 
 $$
 \lambda_{j,\mathrm{out}}
@@ -124,15 +127,13 @@ u_{ji}S_{ji}\lambda_{j,\mathrm{out}}
 }.
 $$
 
-The input-scale update applies only to $i\geq1$ because the constant input
-scale is fixed. Thus, bias responsibility affects the output scale, mixture
-probability, and shared spike variance, but cannot create a redundant scale
-degree of freedom. These coordinate updates are performed every optimization
-iteration. A small numerical floor on $\xi_k$ prevents the standard
-singularity of unconstrained Gaussian-mixture maximum likelihood. Gradients
-update $\mu$ and $\log s^2$ using the reparameterized expected negative log
-likelihood plus the Gaussian-mixture variational KL. The KL coefficient is
-turned on gradually after deterministic pretraining.
+The input-scale update includes $i=0$, so the bias column has one learned prior
+scale shared across all output neurons. These coordinate updates are performed
+every optimization iteration. A small numerical floor on $\xi_k$ prevents the
+standard singularity of unconstrained Gaussian-mixture maximum likelihood.
+Gradients update $\mu$ and $\log s^2$ using the reparameterized expected
+negative log likelihood plus the Gaussian-mixture variational KL. The KL
+coefficient is turned on gradually after deterministic pretraining.
 
 ## Neuron importance
 

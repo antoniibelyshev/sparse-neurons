@@ -35,14 +35,10 @@ def load_model(checkpoint_path: Path, device: torch.device) -> nn.Module:
 
 def neuron_importance(layer: TwoSidedGroupARDLinear) -> torch.Tensor:
     """Return maximum posterior SNR, treating bias as a constant-input weight."""
-    weight_snr = layer.weight_mu.square() / layer.weight_log_variance.exp().clamp_min(
+    variance = layer.augmented_weight_log_variance().exp()
+    weight_snr = layer.augmented_weight_mu().square() / variance.clamp_min(
         layer.variance_floor
     )
-    if layer.bias_mu is not None:
-        bias_snr = layer.bias_mu.square() / layer.bias_log_variance.exp().clamp_min(
-            layer.variance_floor
-        )
-        weight_snr = torch.cat((weight_snr, bias_snr[:, None]), dim=1)
     return weight_snr.amax(1)
 
 
@@ -50,14 +46,11 @@ def neuron_importance(layer: TwoSidedGroupARDLinear) -> torch.Tensor:
 def save_weight_log_snr_histograms(
     layers: list[TwoSidedGroupARDLinear], output_dir: Path
 ) -> None:
-    """Plot the distribution of log posterior SNR for every matrix weight."""
+    """Plot the distribution of log posterior SNR for every augmented weight."""
     fig, axes = plt.subplots(1, len(layers), figsize=(6 * len(layers), 4), squeeze=False)
     for layer_index, (axis, layer) in enumerate(zip(axes[0], layers, strict=True), 1):
-        means = layer.weight_mu.flatten()
-        log_variances = layer.weight_log_variance.flatten()
-        if layer.bias_mu is not None:
-            means = torch.cat((means, layer.bias_mu))
-            log_variances = torch.cat((log_variances, layer.bias_log_variance))
+        means = layer.augmented_weight_mu().flatten()
+        log_variances = layer.augmented_weight_log_variance().flatten()
         squared_mean = means.square()
         log_snr = (
             squared_mean.clamp_min(torch.finfo(squared_mean.dtype).tiny).log()

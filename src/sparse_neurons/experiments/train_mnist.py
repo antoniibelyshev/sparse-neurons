@@ -178,6 +178,9 @@ def collect_input_scales(model: nn.Module, epoch: int) -> list[dict[str, float |
                     "epoch": epoch,
                     "layer": layer_index,
                     "input": input_index,
+                    "is_bias": int(
+                        layer.bias_mu is not None and input_index == layer.in_features
+                    ),
                     "log_lambda_in": layer.log_lambda_in[input_index].item(),
                     "log_tau_in": value.item(),
                 }
@@ -196,10 +199,6 @@ def collect_mixture_diagnostics(
         if layer.mixture_spike_variance is None:
             continue
         responsibility = layer.spike_responsibility.flatten()
-        if layer.bias_mu is not None:
-            responsibility = torch.cat(
-                (responsibility, layer.bias_spike_responsibility)
-            )
         quantiles = torch.quantile(
             responsibility, torch.tensor([0.1, 0.5, 0.9], device=responsibility.device)
         )
