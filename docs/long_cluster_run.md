@@ -130,3 +130,17 @@ Every setting in the script can be overridden through its same-named
 environment variable. In particular, `ARD_EPOCHS`, `KL_ZERO_EPOCHS`, and
 `KL_WARMUP_EPOCHS` control the schedule. `BASELINE_WEIGHT_DECAY=0` disables
 baseline L2 regularization.
+
+## Plot an existing run
+
+To generate diagnostics without retraining:
+
+```bash
+scripts/plot_trained_run.sh
+```
+
+For a checkpoint in another location:
+
+```bash
+DEVICE=cuda scripts/plot_trained_run.sh /path/to/model.pt /path/to/plots
+```
