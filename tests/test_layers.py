@@ -106,9 +106,10 @@ def test_shared_spike_variance_has_exact_m_step() -> None:
 
 
 def test_long_run_kl_schedule_reaches_full_strength() -> None:
-    assert kl_weight(30, zero_epochs=30, warmup_epochs=200) == 0.0
-    assert kl_weight(130, zero_epochs=30, warmup_epochs=200) == 0.5
-    assert kl_weight(230, zero_epochs=30, warmup_epochs=200) == 1.0
+    assert kl_weight(5, zero_epochs=5, warmup_epochs=20) == 0.0
+    assert kl_weight(15, zero_epochs=5, warmup_epochs=20) == 0.5
+    assert kl_weight(25, zero_epochs=5, warmup_epochs=20) == 1.0
+    assert kl_weight(50, zero_epochs=5, warmup_epochs=20) == 1.0
 
 
 def test_neuron_importance_is_maximum_augmented_weight_snr() -> None:

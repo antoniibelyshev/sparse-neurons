@@ -22,8 +22,8 @@ $$
 \beta_t
 =
 \begin{cases}
-0, & t\leq 10,\\
-\min\left(1,\dfrac{t-10}{60}\right), & t>10.
+0, & t\leq 5,\\
+\min\left(1,\dfrac{t-5}{20}\right), & t>5.
 \end{cases}
 $$
 
@@ -71,10 +71,10 @@ regularizes its weights.
 
 The defaults are:
 
-- Baseline: 100 epochs, learning rate $10^{-3}$, L2 coefficient $10^{-4}$.
-- ARD: 100 epochs, initial learning rate $10^{-3}$ with cosine decay.
+- Baseline: 50 epochs, learning rate $10^{-3}$, L2 coefficient $10^{-4}$.
+- ARD: 50 epochs, initial learning rate $10^{-3}$ with cosine decay.
 - Batch size: 1024 for both phases.
-- KL schedule: 10 epochs off, 60-epoch ramp, 30 epochs at full strength.
+- KL schedule: 5 epochs off, 20-epoch ramp, 25 epochs at full strength.
 - EMA decay: $0.999$ in both phases.
 - Initial low-mode variance: $\xi_k=10^{-4}$, followed by exact M-steps.
 - Architecture: $784$-$300$-$100$-$10$.
