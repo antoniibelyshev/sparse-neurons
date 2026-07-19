@@ -7,7 +7,9 @@ from collections.abc import Iterator
 
 from torch import nn
 
-from sparse_neurons.layers import TwoSidedGroupARDLinear
+from sparse_neurons.layers import TwoSidedGroupARDConv2d, TwoSidedGroupARDLinear
+
+ARDLayer = TwoSidedGroupARDLinear | TwoSidedGroupARDConv2d
 
 
 def convert_linear_layers(
@@ -72,10 +74,52 @@ def convert_linear_layers(
     return result
 
 
-def iter_group_ard_layers(module: nn.Module) -> Iterator[TwoSidedGroupARDLinear]:
+def convert_conv2d_layers(
+    module: nn.Module,
+    *,
+    copy_module: bool = True,
+    variance_floor: float = 1e-12,
+    initial_relative_std: float = 1e-2,
+    mixture_spike_variance: float = 1e-4,
+) -> nn.Module:
+    """Replace standard convolutions with channel-structured ARD convolutions."""
+    result = copy.deepcopy(module) if copy_module else module
+    replacements: dict[int, TwoSidedGroupARDConv2d] = {}
+
+    def convert_children(parent: nn.Module) -> None:
+        for name, child in tuple(parent._modules.items()):
+            if child is None or isinstance(child, TwoSidedGroupARDConv2d):
+                continue
+            if isinstance(child, nn.Conv2d):
+                key = id(child)
+                replacement = replacements.get(key)
+                if replacement is None:
+                    replacement = TwoSidedGroupARDConv2d.from_conv2d(
+                        child,
+                        variance_floor=variance_floor,
+                        initial_relative_std=initial_relative_std,
+                        mixture_spike_variance=mixture_spike_variance,
+                    )
+                    replacements[key] = replacement
+                parent._modules[name] = replacement
+            else:
+                convert_children(child)
+
+    if isinstance(result, nn.Conv2d):
+        return TwoSidedGroupARDConv2d.from_conv2d(
+            result,
+            variance_floor=variance_floor,
+            initial_relative_std=initial_relative_std,
+            mixture_spike_variance=mixture_spike_variance,
+        )
+    convert_children(result)
+    return result
+
+
+def iter_group_ard_layers(module: nn.Module) -> Iterator[ARDLayer]:
     """Iterate over all group-ARD layers in a module tree."""
     for child in module.modules():
-        if isinstance(child, TwoSidedGroupARDLinear):
+        if isinstance(child, (TwoSidedGroupARDLinear, TwoSidedGroupARDConv2d)):
             yield child
 
 

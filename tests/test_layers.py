@@ -4,11 +4,15 @@ from argparse import Namespace
 import torch
 from torch import nn
 
-from sparse_neurons.conversion import convert_linear_layers, iter_group_ard_layers
+from sparse_neurons.conversion import (
+    convert_conv2d_layers,
+    convert_linear_layers,
+    iter_group_ard_layers,
+)
 from sparse_neurons.ema import ParameterEMA
 from sparse_neurons.experiments.evaluate_neuron_importance import neuron_importance
 from sparse_neurons.experiments.train_mnist import kl_weight, make_model
-from sparse_neurons.layers import TwoSidedGroupARDLinear
+from sparse_neurons.layers import TwoSidedGroupARDConv2d, TwoSidedGroupARDLinear
 from sparse_neurons.models import DeterministicLeNet300100
 
 
@@ -148,3 +152,22 @@ def test_parameter_ema_updates_and_copies_parameters() -> None:
         model.weight.fill_(7.0)
     ema.copy_to(model)
     assert torch.equal(model.weight, torch.ones_like(model.weight))
+
+
+def test_conv_conversion_preserves_mean_output() -> None:
+    original = nn.Conv2d(3, 5, 3, padding=1).eval()
+    converted = convert_conv2d_layers(original).eval()
+    x = torch.randn(2, 3, 8, 8)
+    assert isinstance(converted, TwoSidedGroupARDConv2d)
+    assert torch.equal(original(x), converted(x))
+
+
+def test_conv_augmented_shapes_and_kl() -> None:
+    layer = TwoSidedGroupARDConv2d(3, 5, 3)
+    assert layer.spike_responsibility.shape == (5, 28)
+    assert layer.log_lambda_in.shape == (4,)
+    layer.update_log_lambda()
+    assert torch.isfinite(layer.kl_divergence())
+    assert torch.allclose(
+        layer.elementwise_kl_divergence().sum(), layer.kl_divergence()
+    )

@@ -12,6 +12,9 @@ dependencies = [
 train-mnist-ard = "sparse_neurons.experiments.train_mnist:main"
 train-mnist-baseline = "sparse_neurons.experiments.train_mnist_baseline:main"
 evaluate-neuron-importance = "sparse_neurons.experiments.evaluate_neuron_importance:main"
+train-cifar10-vgg-baseline = "sparse_neurons.experiments.train_cifar10_vgg_baseline:main"
+train-cifar10-vgg-ard = "sparse_neurons.experiments.train_cifar10_vgg_ard:main"
+evaluate-cifar10-vgg = "sparse_neurons.experiments.evaluate_cifar10_vgg:main"
 
 [dependency-groups]
 dev = [

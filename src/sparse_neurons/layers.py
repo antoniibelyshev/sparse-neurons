@@ -128,6 +128,9 @@ class TwoSidedGroupARDLinear(nn.Module):
         mean = self.augmented_weight_mu()
         return mean.square() + (2.0 * self.augmented_weight_log_std()).exp()
 
+    def expanded_log_lambda_in(self) -> Tensor:
+        return self.log_lambda_in
+
     def row_energy(self) -> Tensor:
         return self.augmented_weight_second_moment().sum(1)
 
@@ -226,5 +229,234 @@ class TwoSidedGroupARDLinear(nn.Module):
             input.square(),
             (2.0 * self.weight_log_std).exp(),
             None if self.bias_log_std is None else (2.0 * self.bias_log_std).exp(),
+        )
+        return mean + (variance + self.variance_floor).sqrt() * torch.randn_like(mean)
+
+
+class TwoSidedGroupARDConv2d(nn.Module):
+    """Conv2d with scalar mixture assignments and channel-level ARD scales."""
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int | tuple[int, int],
+        stride: int | tuple[int, int] = 1,
+        padding: int | tuple[int, int] = 0,
+        dilation: int | tuple[int, int] = 1,
+        bias: bool = True,
+        *,
+        initial_log_std: float = -6.0,
+        variance_floor: float = 1e-12,
+        m_step_sweeps: int = 2,
+        mixture_spike_variance: float = 1e-4,
+    ) -> None:
+        super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = nn.modules.utils._pair(kernel_size)
+        self.stride = nn.modules.utils._pair(stride)
+        self.padding = nn.modules.utils._pair(padding)
+        self.dilation = nn.modules.utils._pair(dilation)
+        self.variance_floor = variance_floor
+        self.m_step_sweeps = m_step_sweeps
+        if mixture_spike_variance <= 0.0:
+            raise ValueError("mixture_spike_variance must be positive")
+        self.mixture_spike_variance = mixture_spike_variance
+        shape = (out_channels, in_channels, *self.kernel_size)
+        self.weight_mu = nn.Parameter(torch.empty(shape))
+        self.weight_log_std = nn.Parameter(torch.full(shape, initial_log_std))
+        if bias:
+            self.bias_mu = nn.Parameter(torch.empty(out_channels))
+            self.bias_log_std = nn.Parameter(torch.full((out_channels,), initial_log_std))
+        else:
+            self.register_parameter("bias_mu", None)
+            self.register_parameter("bias_log_std", None)
+        self.kernel_elements = self.kernel_size[0] * self.kernel_size[1]
+        self.augmented_columns = in_channels * self.kernel_elements + int(bias)
+        self.register_buffer("log_lambda_in", torch.zeros(in_channels + int(bias)))
+        self.register_buffer("log_lambda_out", torch.zeros(out_channels))
+        self.register_buffer("spike_probability", torch.tensor(0.5))
+        self.register_buffer(
+            "log_spike_variance", torch.tensor(math.log(mixture_spike_variance))
+        )
+        self.register_buffer(
+            "spike_responsibility", torch.zeros(out_channels, self.augmented_columns)
+        )
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        nn.init.kaiming_uniform_(self.weight_mu, a=math.sqrt(5))
+        if self.bias_mu is not None:
+            fan_in = self.in_channels * self.kernel_elements
+            nn.init.uniform_(self.bias_mu, -1.0 / math.sqrt(fan_in), 1.0 / math.sqrt(fan_in))
+        self.update_log_lambda()
+
+    @classmethod
+    def from_conv2d(
+        cls,
+        layer: nn.Conv2d,
+        *,
+        variance_floor: float = 1e-12,
+        m_step_sweeps: int = 2,
+        initial_relative_std: float = 1e-2,
+        mixture_spike_variance: float = 1e-4,
+    ) -> TwoSidedGroupARDConv2d:
+        if layer.groups != 1:
+            raise ValueError("grouped convolutions are not supported")
+        converted = cls(
+            layer.in_channels,
+            layer.out_channels,
+            layer.kernel_size,
+            stride=layer.stride,
+            padding=layer.padding,
+            dilation=layer.dilation,
+            bias=layer.bias is not None,
+            variance_floor=variance_floor,
+            m_step_sweeps=m_step_sweeps,
+            mixture_spike_variance=mixture_spike_variance,
+        ).to(device=layer.weight.device, dtype=layer.weight.dtype)
+        with torch.no_grad():
+            converted.weight_mu.copy_(layer.weight)
+            if layer.bias is not None:
+                converted.bias_mu.copy_(layer.bias)
+            std_floor = math.sqrt(variance_floor)
+            converted.weight_log_std.copy_(
+                (initial_relative_std * converted.weight_mu.abs())
+                .clamp_min(std_floor)
+                .log()
+            )
+            if converted.bias_mu is not None:
+                converted.bias_log_std.copy_(
+                    (initial_relative_std * converted.bias_mu.abs())
+                    .clamp_min(std_floor)
+                    .log()
+                )
+            converted.update_log_lambda()
+        converted.train(layer.training)
+        return converted
+
+    def augmented_weight_mu(self) -> Tensor:
+        matrix = self.weight_mu.flatten(1)
+        if self.bias_mu is not None:
+            matrix = torch.cat((matrix, self.bias_mu[:, None]), dim=1)
+        return matrix
+
+    def augmented_weight_log_std(self) -> Tensor:
+        matrix = self.weight_log_std.flatten(1)
+        if self.bias_log_std is not None:
+            matrix = torch.cat((matrix, self.bias_log_std[:, None]), dim=1)
+        return matrix
+
+    def augmented_weight_second_moment(self) -> Tensor:
+        mean = self.augmented_weight_mu()
+        return mean.square() + (2.0 * self.augmented_weight_log_std()).exp()
+
+    def expanded_log_lambda_in(self) -> Tensor:
+        weights = self.log_lambda_in[: self.in_channels].repeat_interleave(
+            self.kernel_elements
+        )
+        if self.bias_mu is not None:
+            weights = torch.cat((weights, self.log_lambda_in[-1:]))
+        return weights
+
+    @torch.no_grad()
+    def update_log_lambda(self) -> Tensor:
+        second_moment = self.augmented_weight_second_moment()
+        for _ in range(self.m_step_sweeps):
+            slab = self._update_mixture(second_moment)
+            expanded_in = self.expanded_log_lambda_in().exp()
+            output_energy = (second_moment * slab * expanded_in[None, :]).sum(1)
+            self.log_lambda_out.copy_(
+                slab.sum(1).clamp_min(self.variance_floor).log()
+                - output_energy.clamp_min(self.variance_floor).log()
+            )
+            weighted = second_moment * slab * self.log_lambda_out.exp()[:, None]
+            weight_weighted = weighted[:, : self.in_channels * self.kernel_elements]
+            weight_slab = slab[:, : self.in_channels * self.kernel_elements]
+            input_energy = weight_weighted.view(
+                self.out_channels, self.in_channels, self.kernel_elements
+            ).sum((0, 2))
+            input_dimension = weight_slab.view(
+                self.out_channels, self.in_channels, self.kernel_elements
+            ).sum((0, 2))
+            if self.bias_mu is not None:
+                input_energy = torch.cat((input_energy, weighted[:, -1:].sum(0)))
+                input_dimension = torch.cat((input_dimension, slab[:, -1:].sum(0)))
+            self.log_lambda_in.copy_(
+                input_dimension.clamp_min(self.variance_floor).log()
+                - input_energy.clamp_min(self.variance_floor).log()
+            )
+        return self.log_lambda_out
+
+    @torch.no_grad()
+    def _update_mixture(self, second_moment: Tensor) -> Tensor:
+        base_precision = (
+            self.log_lambda_out.exp()[:, None]
+            * self.expanded_log_lambda_in().exp()[None, :]
+        )
+        probability = self.spike_probability.clamp(1e-6, 1.0 - 1e-6)
+        logit_probability = probability.log() - (-probability).log1p()
+        spike_precision = (-self.log_spike_variance).exp()
+        logit = (
+            logit_probability
+            - 0.5 * (base_precision.log() + self.log_spike_variance)
+            - 0.5 * second_moment * (spike_precision - base_precision)
+        )
+        self.spike_responsibility.copy_(logit.sigmoid())
+        self.spike_probability.copy_(
+            self.spike_responsibility.mean().clamp(1e-6, 1.0 - 1e-6)
+        )
+        spike_mass = self.spike_responsibility.sum()
+        spike_energy = (self.spike_responsibility * second_moment).sum()
+        self.log_spike_variance.copy_(
+            (spike_energy / spike_mass.clamp_min(self.variance_floor))
+            .clamp_min(self.variance_floor)
+            .log()
+        )
+        return 1.0 - self.spike_responsibility
+
+    def elementwise_kl_divergence(self) -> Tensor:
+        log_base_precision = (
+            self.log_lambda_out[:, None] + self.expanded_log_lambda_in()[None, :]
+        )
+        base_precision = log_base_precision.exp()
+        second_moment = self.augmented_weight_second_moment()
+        log_variance = 2.0 * self.augmented_weight_log_std()
+        responsibility = self.spike_responsibility.clamp(1e-6, 1.0 - 1e-6)
+        slab = 1.0 - responsibility
+        probability = self.spike_probability.clamp(1e-6, 1.0 - 1e-6)
+        spike_precision = (-self.log_spike_variance).exp()
+        gaussian_kl = 0.5 * (
+            (responsibility * spike_precision + slab * base_precision) * second_moment
+            - 1.0
+            - log_variance
+            + responsibility * self.log_spike_variance
+            - slab * log_base_precision
+        )
+        categorical_kl = (
+            responsibility * (responsibility.log() - probability.log())
+            + slab * (slab.log() - (1.0 - probability).log())
+        )
+        return gaussian_kl + categorical_kl
+
+    def kl_divergence(self) -> Tensor:
+        return self.elementwise_kl_divergence().sum()
+
+    def forward(self, input: Tensor, *, sample: bool | None = None) -> Tensor:
+        if sample is None:
+            sample = self.training
+        mean = F.conv2d(
+            input, self.weight_mu, self.bias_mu, self.stride, self.padding, self.dilation
+        )
+        if not sample:
+            return mean
+        variance = F.conv2d(
+            input.square(),
+            (2.0 * self.weight_log_std).exp(),
+            None if self.bias_log_std is None else (2.0 * self.bias_log_std).exp(),
+            self.stride,
+            self.padding,
+            self.dilation,
         )
         return mean + (variance + self.variance_floor).sqrt() * torch.randn_like(mean)
