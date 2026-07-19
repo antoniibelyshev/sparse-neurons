@@ -147,6 +147,75 @@ Gradients update $\mu$ and $\log s$ using the reparameterized expected
 negative log likelihood plus the Gaussian-mixture variational KL. The KL
 coefficient is turned on gradually after deterministic pretraining.
 
+## L2 penalties versus hyperpriors
+
+Optimizer weight decay on $\mu$ adds $\gamma\sum_{j,i}\mu_{ji}^2/2$. This is
+not a hyperprior and ignores posterior uncertainty. Applying L2 to $\log s$ is
+not meaningful: it pulls $\log s$ toward zero and hence $s$ toward one.
+
+An additional Gaussian shrinkage factor on the random weights would instead
+produce the expected penalty
+
+$$
+\frac{\gamma}{2}\mathbb E_q\lVert W\rVert_2^2
+=
+\frac{\gamma}{2}\sum_{j,i}(\mu_{ji}^2+s_{ji}^2).
+$$
+
+This regularizes means and variances together, but changes the mixture prior
+by multiplying it by another Gaussian factor. It should be modeled explicitly,
+not applied as generic optimizer weight decay.
+
+The natural hierarchical extension is a hyperprior on the ARD precisions. For
+shape-rate Gamma hyperpriors, the MAP coordinate updates are
+
+$$
+\boxed{
+\lambda_{j,\mathrm{out}}
+=
+\frac{
+a_{\mathrm{out}}-1+\frac12\sum_i u_{ji}
+}{
+b_{\mathrm{out}}+\frac12\sum_i
+u_{ji}S_{ji}\lambda_{i,\mathrm{in}}
+},
+}
+$$
+
+and
+
+$$
+\boxed{
+\lambda_{i,\mathrm{in}}
+=
+\frac{
+a_{\mathrm{in}}-1+\frac12\sum_j u_{ji}
+}{
+b_{\mathrm{in}}+\frac12\sum_j
+u_{ji}S_{ji}\lambda_{j,\mathrm{out}}
+}.
+}
+$$
+
+An inverse-Gamma hyperprior $p(\xi_k)=\operatorname{InvGamma}(a_\xi,b_\xi)$
+gives
+
+$$
+\boxed{
+\xi_k
+=
+\frac{
+b_\xi+\frac12\sum_{j,i}r_{ji}S_{ji}
+}{
+a_\xi+1+\frac12\sum_{j,i}r_{ji}
+}.
+}
+$$
+
+These updates depend on $S_{ji}=\mu_{ji}^2+s_{ji}^2$, so they regularize
+posterior means and variances jointly. The current ARD phase uses the
+maximum-likelihood limits and no optimizer weight decay.
+
 ## Per-weight KL decomposition
 
 Let $u_{ji}=1-r_{ji}$ and define
