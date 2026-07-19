@@ -216,6 +216,76 @@ These updates depend on $S_{ji}=\mu_{ji}^2+s_{ji}^2$, so they regularize
 posterior means and variances jointly. The current ARD phase uses the
 maximum-likelihood limits and no optimizer weight decay.
 
+### Hyperprior limit corresponding to L2
+
+The closest hierarchical analogue of L2 is a concentrated Gamma prior on a
+Gaussian precision. Let
+
+$$
+\lambda\sim\operatorname{Gamma}(c,c/\gamma).
+$$
+
+Then
+
+$$
+\mathbb E[\lambda]=\gamma,
+\qquad
+\frac{\operatorname{std}(\lambda)}{\mathbb E[\lambda]}=\frac1{\sqrt c},
+$$
+
+so $\lambda\to\gamma$ as $c\to\infty$. In this limit the prior becomes
+$\mathcal N(0,\gamma^{-1})$, and
+
+$$
+\boxed{
+\operatorname{KL}\left(
+\mathcal N(\mu,s^2)\,\Vert\,\mathcal N(0,\gamma^{-1})
+\right)
+=
+\frac{\gamma}{2}(\mu^2+s^2)-\log s+C.
+}
+$$
+
+Thus the term $\gamma\mu^2/2$ is ordinary L2 on the posterior mean,
+$\gamma s^2/2$ penalizes excessive posterior variance, and $-\log s$ is the
+entropy contribution that prevents $s$ from collapsing to zero. Applying L2
+directly to $\log s$ does not have this interpretation.
+
+There is an important normalization conversion. Our training objective uses
+$\operatorname{KL}/N$, where $N$ is the number of training examples. To match
+an optimizer L2 coefficient $\gamma_{\mathrm{L2}}$ in a mean-data-loss
+objective, the corresponding fixed prior precision is
+
+$$
+\gamma=N\gamma_{\mathrm{L2}}.
+$$
+
+For MNIST, $N=60000$, so optimizer L2 coefficient $10^{-3}$ corresponds to
+prior precision $60$, or prior standard deviation approximately $0.129$.
+
+For the current two-sided model, independent hyperpriors on
+$\lambda_{j,\mathrm{out}}$ and $\lambda_{i,\mathrm{in}}$ do not reproduce a
+single uniform L2 coefficient exactly because the effective slab precision is
+their product. A strongly concentrated prior on the effective precision would
+approximate L2 but would also suppress the ARD adaptivity. If uniform
+L2-like shrinkage is desired in addition to ARD, a clearer model is to add a
+fixed ridge precision $\gamma$ to each component precision,
+
+$$
+\lambda_{ji,\mathrm{slab}}^{\mathrm{eff}}
+=
+\lambda_{j,\mathrm{out}}\lambda_{i,\mathrm{in}}+\gamma,
+$$
+
+$$
+\lambda_{\mathrm{spike}}^{\mathrm{eff}}
+=
+\xi_k^{-1}+\gamma.
+$$
+
+This preserves the interpretation of a uniform Gaussian shrinkage factor and
+regularizes both $\mu$ and $s$ through the variational KL.
+
 ## Per-weight KL decomposition
 
 Let $u_{ji}=1-r_{ji}$ and define
