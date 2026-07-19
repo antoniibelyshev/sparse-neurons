@@ -59,13 +59,13 @@ def test_augmented_ml_updates_are_stationary() -> None:
     assert torch.allclose(layer.log_lambda_out, old_out, atol=2e-4)
 
 
-def test_relative_variance_initialization_tracks_copied_means() -> None:
+def test_relative_std_initialization_tracks_copied_means() -> None:
     original = nn.Linear(4, 3)
     converted = TwoSidedGroupARDLinear.from_linear(
-        original, initial_relative_variance=1e-6, variance_floor=1e-12
+        original, initial_relative_std=1e-2, variance_floor=1e-12
     )
-    expected = 1e-12 + 1e-6 * original.weight.square()
-    assert torch.allclose(converted.weight_log_variance.exp(), expected, rtol=1e-5)
+    expected = (1e-2 * original.weight.abs()).clamp_min(1e-6)
+    assert torch.allclose(converted.weight_log_std.exp(), expected, rtol=1e-5)
 
 
 def test_mixture_responsibilities_and_kl_are_valid() -> None:
@@ -84,8 +84,7 @@ def test_pretrained_conversion_keeps_final_layer_dense(tmp_path) -> None:
     torch.save({"model": original.state_dict(), "epoch": 1}, checkpoint)
     args = Namespace(
         pretrained_checkpoint=checkpoint,
-        initial_log_variance=-12.0,
-        initial_relative_variance=None,
+        initial_relative_std=1e-2,
         mixture_spike_variance=1e-4,
         hidden_sizes=(300, 100),
     )
@@ -106,21 +105,21 @@ def test_shared_spike_variance_has_exact_m_step() -> None:
 
 
 def test_long_run_kl_schedule_reaches_full_strength() -> None:
-    assert kl_weight(30, zero_epochs=30, warmup_epochs=200) == 0.0
-    assert kl_weight(130, zero_epochs=30, warmup_epochs=200) == 0.5
-    assert kl_weight(230, zero_epochs=30, warmup_epochs=200) == 1.0
-    assert kl_weight(300, zero_epochs=30, warmup_epochs=200) == 1.0
+    assert kl_weight(1, zero_epochs=0, warmup_epochs=200) == 0.005
+    assert kl_weight(100, zero_epochs=0, warmup_epochs=200) == 0.5
+    assert kl_weight(200, zero_epochs=0, warmup_epochs=200) == 1.0
+    assert kl_weight(300, zero_epochs=0, warmup_epochs=200) == 1.0
 
 
 def test_neuron_importance_is_maximum_augmented_weight_snr() -> None:
     layer = TwoSidedGroupARDLinear(3, 2)
     with torch.no_grad():
         layer.weight_mu.copy_(torch.tensor([[1.0, 2.0, 3.0], [2.0, 1.0, 0.5]]))
-        layer.weight_log_variance.copy_(
-            torch.tensor([[1.0, 2.0, 3.0], [4.0, 0.5, 0.25]]).log()
+        layer.weight_log_std.copy_(
+            0.5 * torch.tensor([[1.0, 2.0, 3.0], [4.0, 0.5, 0.25]]).log()
         )
         layer.bias_mu.copy_(torch.tensor([2.0, 0.0]))
-        layer.bias_log_variance.zero_()
+        layer.bias_log_std.zero_()
     assert torch.allclose(neuron_importance(layer), torch.tensor([4.0, 2.0]))
 
 
@@ -129,7 +128,7 @@ def test_bias_has_learned_augmented_input_scale() -> None:
     assert layer.log_lambda_in.shape == (4,)
     with torch.no_grad():
         layer.bias_mu.fill_(3.0)
-        layer.bias_log_variance.fill_(-8.0)
+        layer.bias_log_std.fill_(-4.0)
     layer.update_log_lambda()
     assert layer.log_lambda_in[-1].item() != 0.0
 

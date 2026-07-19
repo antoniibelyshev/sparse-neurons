@@ -16,6 +16,19 @@ q(w_{ji}^{(k)})
 \mathcal N(\mu_{ji}^{(k)},s_{ji}^{(k)2}).
 $$
 
+The optimized uncertainty parameter is $\log s_{ji}$, not $s_{ji}$ or
+$\log s_{ji}^2$. After copying a deterministic checkpoint, it is initialized
+as
+
+$$
+s_{ji}
+=
+\max\left(10^{-2}|\mu_{ji}|,10^{-6}\right).
+$$
+
+Thus, nonzero pretrained weights begin with a $1\%$ relative posterior
+standard deviation while near-zero weights retain a numerical floor.
+
 The prior variance is the product of layer-local input and output scales,
 
 $$
@@ -130,7 +143,7 @@ The input-scale update includes $i=0$, so the bias column has one learned prior
 scale shared across all output neurons. These coordinate updates are performed
 every optimization iteration. A small numerical floor on $\xi_k$ prevents the
 standard singularity of unconstrained Gaussian-mixture maximum likelihood.
-Gradients update $\mu$ and $\log s^2$ using the reparameterized expected
+Gradients update $\mu$ and $\log s$ using the reparameterized expected
 negative log likelihood plus the Gaussian-mixture variational KL. The KL
 coefficient is turned on gradually after deterministic pretraining.
 

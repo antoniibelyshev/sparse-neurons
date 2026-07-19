@@ -9,7 +9,7 @@ BATCH_SIZE="${BATCH_SIZE:-1024}"
 NUM_WORKERS="${NUM_WORKERS:-4}"
 BASELINE_EPOCHS="${BASELINE_EPOCHS:-100}"
 ARD_EPOCHS="${ARD_EPOCHS:-300}"
-KL_ZERO_EPOCHS="${KL_ZERO_EPOCHS:-30}"
+KL_ZERO_EPOCHS="${KL_ZERO_EPOCHS:-0}"
 KL_WARMUP_EPOCHS="${KL_WARMUP_EPOCHS:-200}"
 CHECKPOINT_EVERY="${CHECKPOINT_EVERY:-10}"
 BASELINE_LR="${BASELINE_LR:-0.001}"
@@ -47,7 +47,7 @@ uv run train-mnist-ard \
   --batch-size "${BATCH_SIZE}" \
   --learning-rate "${ARD_LR}" \
   --ema-decay "${EMA_DECAY}" \
-  --initial-log-variance -12 \
+  --initial-relative-std 0.01 \
   --seed "${SEED}" \
   --device "${DEVICE}" \
   --data-dir "${DATA_DIR}" \

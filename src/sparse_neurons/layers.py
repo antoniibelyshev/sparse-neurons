@@ -18,7 +18,7 @@ class TwoSidedGroupARDLinear(nn.Module):
         out_features: int,
         bias: bool = True,
         *,
-        initial_log_variance: float = -12.0,
+        initial_log_std: float = -6.0,
         variance_floor: float = 1e-12,
         m_step_sweeps: int = 2,
         mixture_spike_variance: float = 1e-4,
@@ -32,17 +32,17 @@ class TwoSidedGroupARDLinear(nn.Module):
             raise ValueError("mixture_spike_variance must be positive")
         self.mixture_spike_variance = mixture_spike_variance
         self.weight_mu = nn.Parameter(torch.empty(out_features, in_features))
-        self.weight_log_variance = nn.Parameter(
-            torch.full((out_features, in_features), initial_log_variance)
+        self.weight_log_std = nn.Parameter(
+            torch.full((out_features, in_features), initial_log_std)
         )
         if bias:
             self.bias_mu = nn.Parameter(torch.empty(out_features))
-            self.bias_log_variance = nn.Parameter(
-                torch.full((out_features,), initial_log_variance)
+            self.bias_log_std = nn.Parameter(
+                torch.full((out_features,), initial_log_std)
             )
         else:
             self.register_parameter("bias_mu", None)
-            self.register_parameter("bias_log_variance", None)
+            self.register_parameter("bias_log_std", None)
         self.augmented_in_features = in_features + int(bias)
         self.register_buffer("log_lambda_in", torch.zeros(self.augmented_in_features))
         self.register_buffer("log_lambda_out", torch.zeros(out_features))
@@ -74,17 +74,17 @@ class TwoSidedGroupARDLinear(nn.Module):
         cls,
         layer: nn.Linear,
         *,
-        initial_log_variance: float = -12.0,
+        initial_log_std: float = -6.0,
         variance_floor: float = 1e-12,
         m_step_sweeps: int = 2,
-        initial_relative_variance: float | None = None,
+        initial_relative_std: float = 1e-2,
         mixture_spike_variance: float = 1e-4,
     ) -> TwoSidedGroupARDLinear:
         converted = cls(
             layer.in_features,
             layer.out_features,
             bias=layer.bias is not None,
-            initial_log_variance=initial_log_variance,
+            initial_log_std=initial_log_std,
             variance_floor=variance_floor,
             m_step_sweeps=m_step_sweeps,
             mixture_spike_variance=mixture_spike_variance,
@@ -93,42 +93,40 @@ class TwoSidedGroupARDLinear(nn.Module):
             converted.weight_mu.copy_(layer.weight)
             if layer.bias is not None:
                 converted.bias_mu.copy_(layer.bias)
-            if initial_relative_variance is not None:
-                converted.weight_log_variance.copy_(
-                    (
-                        variance_floor
-                        + initial_relative_variance * converted.weight_mu.square()
-                    ).log()
+            std_floor = math.sqrt(variance_floor)
+            converted.weight_log_std.copy_(
+                (initial_relative_std * converted.weight_mu.abs())
+                .clamp_min(std_floor)
+                .log()
+            )
+            if converted.bias_mu is not None:
+                converted.bias_log_std.copy_(
+                    (initial_relative_std * converted.bias_mu.abs())
+                    .clamp_min(std_floor)
+                    .log()
                 )
-                if converted.bias_mu is not None:
-                    converted.bias_log_variance.copy_(
-                        (
-                            variance_floor
-                            + initial_relative_variance * converted.bias_mu.square()
-                        ).log()
-                    )
             converted.update_log_lambda()
         converted.train(layer.training)
         return converted
 
     def weight_second_moment(self) -> Tensor:
-        return self.weight_mu.square() + self.weight_log_variance.exp()
+        return self.weight_mu.square() + (2.0 * self.weight_log_std).exp()
 
     def augmented_weight_mu(self) -> Tensor:
         if self.bias_mu is None:
             return self.weight_mu
         return torch.cat((self.weight_mu, self.bias_mu[:, None]), dim=1)
 
-    def augmented_weight_log_variance(self) -> Tensor:
-        if self.bias_log_variance is None:
-            return self.weight_log_variance
+    def augmented_weight_log_std(self) -> Tensor:
+        if self.bias_log_std is None:
+            return self.weight_log_std
         return torch.cat(
-            (self.weight_log_variance, self.bias_log_variance[:, None]), dim=1
+            (self.weight_log_std, self.bias_log_std[:, None]), dim=1
         )
 
     def augmented_weight_second_moment(self) -> Tensor:
         mean = self.augmented_weight_mu()
-        return mean.square() + self.augmented_weight_log_variance().exp()
+        return mean.square() + (2.0 * self.augmented_weight_log_std()).exp()
 
     def row_energy(self) -> Tensor:
         return self.augmented_weight_second_moment().sum(1)
@@ -193,7 +191,7 @@ class TwoSidedGroupARDLinear(nn.Module):
             * self.log_lambda_in[None, :].exp()
         )
         second_moment = self.augmented_weight_second_moment()
-        log_variance = self.augmented_weight_log_variance()
+        log_variance = 2.0 * self.augmented_weight_log_std()
         responsibility = self.spike_responsibility.clamp(1e-6, 1.0 - 1e-6)
         slab_responsibility = 1.0 - responsibility
         probability = self.spike_probability.clamp(1e-6, 1.0 - 1e-6)
@@ -223,7 +221,7 @@ class TwoSidedGroupARDLinear(nn.Module):
             return mean
         variance = F.linear(
             input.square(),
-            self.weight_log_variance.exp(),
-            None if self.bias_log_variance is None else self.bias_log_variance.exp(),
+            (2.0 * self.weight_log_std).exp(),
+            None if self.bias_log_std is None else (2.0 * self.bias_log_std).exp(),
         )
         return mean + (variance + self.variance_floor).sqrt() * torch.randn_like(mean)

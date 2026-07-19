@@ -14,9 +14,8 @@ def convert_linear_layers(
     module: nn.Module,
     *,
     copy_module: bool = True,
-    initial_log_variance: float = -12.0,
     variance_floor: float = 1e-12,
-    initial_relative_variance: float | None = None,
+    initial_relative_std: float = 1e-2,
     mixture_spike_variance: float = 1e-4,
 ) -> nn.Module:
     """Replace every ``nn.Linear`` with the selected augmented ARD layer.
@@ -30,7 +29,6 @@ def convert_linear_layers(
     Args:
         module: A standard Torch module, potentially with nested containers.
         copy_module: Deep-copy ``module`` before replacing layers.
-        initial_log_variance: Initial posterior log variance in converted layers.
         variance_floor: Numerical variance floor.
     """
     result = copy.deepcopy(module) if copy_module else module
@@ -47,9 +45,8 @@ def convert_linear_layers(
                 replacement = replacements.get(key)
                 if replacement is None:
                     common = {
-                        "initial_log_variance": initial_log_variance,
                         "variance_floor": variance_floor,
-                        "initial_relative_variance": initial_relative_variance,
+                        "initial_relative_std": initial_relative_std,
                     }
                     replacement = TwoSidedGroupARDLinear.from_linear(
                         child,
@@ -63,9 +60,8 @@ def convert_linear_layers(
 
     if isinstance(result, nn.Linear):
         common = {
-            "initial_log_variance": initial_log_variance,
             "variance_floor": variance_floor,
-            "initial_relative_variance": initial_relative_variance,
+            "initial_relative_std": initial_relative_std,
         }
         return TwoSidedGroupARDLinear.from_linear(
             result,

@@ -32,8 +32,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--learning-rate", type=float, default=1e-3)
     parser.add_argument("--ema-decay", type=float, default=0.999)
-    parser.add_argument("--initial-log-variance", type=float, default=-12.0)
-    parser.add_argument("--initial-relative-variance", type=float)
+    parser.add_argument("--initial-relative-std", type=float, default=1e-2)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--device", choices=("auto", "cpu", "cuda", "mps"), default="auto")
     parser.add_argument("--data-dir", type=Path, default=Path("data"))
@@ -137,8 +136,7 @@ def make_model(args: argparse.Namespace, device: torch.device) -> nn.Module:
     deterministic.eval()
     converted = convert_linear_layers(
         deterministic,
-        initial_log_variance=args.initial_log_variance,
-        initial_relative_variance=args.initial_relative_variance,
+        initial_relative_std=args.initial_relative_std,
         mixture_spike_variance=args.mixture_spike_variance,
     )
     converted.layers[-1] = copy.deepcopy(deterministic.layers[-1])

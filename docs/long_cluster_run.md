@@ -21,11 +21,16 @@ with
 $$
 \beta_t
 =
-\begin{cases}
-0, & t\leq 30,\\
-\min\left(1,\dfrac{t-30}{200}\right), & t>30.
-\end{cases}
+\min\left(1,\frac{t}{200}\right).
 $$
+
+There is no KL-free phase. The copied posterior is initialized with
+
+$$
+s_{ji}=\max\left(10^{-2}|\mu_{ji}|,10^{-6}\right),
+$$
+
+and training optimizes $\log s_{ji}$ directly.
 
 Both training phases use cosine learning-rate decay. For a phase of $T$
 epochs,
@@ -74,7 +79,7 @@ The defaults are:
 - Baseline: 100 epochs, learning rate $10^{-3}$, L2 coefficient $10^{-4}$.
 - ARD: 300 epochs, initial learning rate $10^{-3}$ with cosine decay.
 - Batch size: 1024 for both phases.
-- KL schedule: 30 epochs off, 200-epoch ramp, 70 epochs at full strength.
+- KL schedule: 200-epoch ramp from the first epoch, then 100 full-KL epochs.
 - EMA decay: $0.999$ in both phases.
 - Initial low-mode variance: $\xi_k=10^{-4}$, followed by exact M-steps.
 - Architecture: $784$-$300$-$100$-$10$.

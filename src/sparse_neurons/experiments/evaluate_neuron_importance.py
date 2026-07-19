@@ -35,7 +35,7 @@ def load_model(checkpoint_path: Path, device: torch.device) -> nn.Module:
 
 def neuron_importance(layer: TwoSidedGroupARDLinear) -> torch.Tensor:
     """Return maximum posterior SNR, treating bias as a constant-input weight."""
-    variance = layer.augmented_weight_log_variance().exp()
+    variance = (2.0 * layer.augmented_weight_log_std()).exp()
     weight_snr = layer.augmented_weight_mu().square() / variance.clamp_min(
         layer.variance_floor
     )
@@ -50,7 +50,7 @@ def save_weight_log_snr_histograms(
     fig, axes = plt.subplots(1, len(layers), figsize=(6 * len(layers), 4), squeeze=False)
     for layer_index, (axis, layer) in enumerate(zip(axes[0], layers, strict=True), 1):
         means = layer.augmented_weight_mu().flatten()
-        log_variances = layer.augmented_weight_log_variance().flatten()
+        log_variances = 2.0 * layer.augmented_weight_log_std().flatten()
         squared_mean = means.square()
         log_snr = (
             squared_mean.clamp_min(torch.finfo(squared_mean.dtype).tiny).log()
