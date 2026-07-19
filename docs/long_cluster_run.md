@@ -45,6 +45,7 @@ The defaults are:
 
 - Baseline: 100 epochs, learning rate $10^{-3}$, L2 coefficient $10^{-4}$.
 - ARD: 300 epochs, learning rate $10^{-4}$.
+- Batch size: 1024 for both phases.
 - KL schedule: 30 epochs off, 200-epoch ramp, 70 epochs at full strength.
 - Initial low-mode variance: $\xi_k=10^{-4}$, followed by exact M-steps.
 - Architecture: $784$-$300$-$100$-$10$.
@@ -75,7 +76,7 @@ Common cluster overrides:
 ```bash
 DEVICE=cuda \
 NUM_WORKERS=8 \
-BATCH_SIZE=512 \
+BATCH_SIZE=1024 \
 OUTPUT_ROOT=/path/to/persistent/results/mnist_long \
 scripts/run_long_mnist.sh
 ```
