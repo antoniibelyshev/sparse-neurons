@@ -1,0 +1,23 @@
+[project]
+name = "sparse-neurons"
+version = "0.1.0"
+requires-python = ">=3.14"
+dependencies = [
+    "matplotlib>=3.10",
+    "torch>=2.7",
+    "torchvision>=0.22",
+]
+
+[project.scripts]
+train-mnist-ard = "sparse_neurons.experiments.train_mnist:main"
+train-mnist-baseline = "sparse_neurons.experiments.train_mnist_baseline:main"
+evaluate-neuron-importance = "sparse_neurons.experiments.evaluate_neuron_importance:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
